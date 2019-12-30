@@ -26,30 +26,6 @@ struct LogWriterZeroSimd {
       next_free = 0;
    }
 
-   void FastCopy512Simd(ub1 *dest, const ub1 *src)
-   {
-      assert(((ub8) dest) % 64 == 0);
-#ifdef __APPLE__
-      memcpy(dest, src, 64);
-#else
-      //      __m256 reg0 = _mm256_loadu_ps((float*)(src + 0));
-      //      _mm256_store_ps((float*)(dest + 0), reg0);
-      //      __m256 reg1 = _mm256_loadu_ps((float*)(src + 32));
-      //      _mm256_store_ps((float*)(dest + 32), reg1);
-            __m512i reg = _mm512_loadu_si512(src);
-            _mm512_store_si512((__m512i *) dest, reg);
-#endif
-   }
-
-   ub4 FastPopCount512Simd(const ub1 *ptr)
-   {
-      ub4 res = 0;
-      for (ub4 i = 0; i<64; i += 8) {
-         res += alex_PopCount(*(ub8 *) (&ptr[i]));
-      }
-      return res;
-   }
-
    ub8 AddLogEntry(const Entry &entry)
    {
       ub4 size = entry.payload_size + 8;
@@ -67,7 +43,7 @@ struct LogWriterZeroSimd {
       // Copy first cache line (and do not flush)
       ub4 pop_cnt = 0;
       FastCopy512Simd(nvm_begin, ram_begin);
-      pop_cnt += FastPopCount512Simd(ram_begin);
+      pop_cnt += FastPopCount512(ram_begin);
 
       // Copy remaining full cache lines (and flush)
       ub4 pos = 64;

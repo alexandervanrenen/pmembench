@@ -87,12 +87,16 @@ ub4 FastPopCount512(const ub1 *ptr)
    return res;
 }
 // -------------------------------------------------------------------------------------
+void FastCopy512Simd(ub1 *dest, const ub1 *src)
+{
+   assert(((ub8) dest) % 64 == 0);
+   __m512i reg = _mm512_loadu_si512(src);
+   _mm512_store_si512((__m512i *) dest, reg);
+}
+// -------------------------------------------------------------------------------------
 void alex_FastCopyAndWriteBack(ub1 *nvm_begin, const ub1 *ram_begin, ub4 size)
 {
-   if (size % 64 == 0) {
-      pmem_memcpy_persist(nvm_begin, &ram_begin, size);
-      return;
-   }
+   assert(((ub8) nvm_begin) % 64 == 0); // nvm needs to be aligned
 
    // Copy full cache lines (and flush)
    ub4 pos = 0;
