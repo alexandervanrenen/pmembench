@@ -58,10 +58,11 @@ ub4 RUNS;
 string NVM_FILE;
 bool TABLE_VIEW;
 
-void PrintResult(ub4 entry_size, double ns_per_entry)
+void PrintResult(string name, ub4 entry_size, double ns_per_entry)
 {
    //@formatter:off
    cout << "res:";
+   cout << " technique: " << name;
    cout << " min_log_entry_size: " << MIN_LOG_ENTRY_SIZE;
    cout << " max_log_entry_size: " << MAX_LOG_ENTRY_SIZE;
    cout << " log_payload_size(MB): " << LOG_PAYLOAD_SIZE / 1000 / 1000;
@@ -131,7 +132,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("libPmem", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -148,7 +149,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("classic", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -165,7 +166,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("classicCached", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -182,7 +183,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("classicAligned", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -199,7 +200,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("header", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -216,7 +217,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("headerAligned", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -233,7 +234,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("headerDanc", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -250,7 +251,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("headerAligDanc", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -267,7 +268,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("zero", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -284,7 +285,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("zeroAligned", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -301,7 +302,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("zeroBlocked", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
 
@@ -318,7 +319,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult(entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("zeroSimd", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
       printf("\n");
