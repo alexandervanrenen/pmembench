@@ -322,7 +322,9 @@ int main(int argc, char **argv)
             PrintResult("zeroSimd", entry_size, ns_spend * 1.0 / entries.size());
          }
       }
-      printf("\n");
+      if (TABLE_VIEW) {
+         printf("\n");
+      }
    }
 
    return 0;

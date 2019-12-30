@@ -15,7 +15,8 @@ struct LogWriterPMemLib {
       system(("rm -f " + file_name + "_pmemlib").c_str());
       log = pmemlog_create((file_name + "_pmemlib").c_str(), file_size, 0666);
       if (log == nullptr) {
-
+         cout << "fail initializing pmemlog log" << endl;
+         exit(-1);
       }
 
       next_free = 0;
