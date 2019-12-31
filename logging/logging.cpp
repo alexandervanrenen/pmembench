@@ -73,7 +73,7 @@ void PrintResult(string name, ub4 entry_size, double ns_per_entry)
    //@formatter:on
 }
 
-// clang++ -g0 -O3 -march=native -std=c++17 logging/logging.cpp -Invml/src/include/ nvml/src/nondebug/libpmem.a nvml/src/nondebug/libpmemlog.a -lpthread -lndctl -ldaxctl && ./a.out 128 128 100000000 3 /mnt/pmem0/renen/file_0
+// clang++ -g0 -O3 -DNEDBUG=1 -march=native -std=c++17 logging/logging.cpp -Invml/src/include/ nvml/src/nondebug/libpmem.a nvml/src/nondebug/libpmemlog.a -lpthread -lndctl -ldaxctl && ./a.out 128 128 1000000000 3 /mnt/pmem0/renen/file_0 0
 int main(int argc, char **argv)
 {
    Random ranny;
@@ -120,21 +120,21 @@ int main(int argc, char **argv)
       }
 
       // PmemLib
-      {
-         LogWriterPMemLib wal(NVM_FILE, NVM_SIZE);
-         vector<LogWriterPMemLib::Entry *> entries = LogWriterPMemLib::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
-         ub8 ns_spend = RunWithTiming([&]() {
-            for (LogWriterPMemLib::Entry *entry : entries) {
-               wal.AddLogEntry(*entry);
-            }
-         });
-         if (TABLE_VIEW) {
-            printf("%20f", ns_spend * 1.0 / entries.size());
-            fflush(stdout);
-         } else {
-            PrintResult("libPmem", entry_size, ns_spend * 1.0 / entries.size());
-         }
-      }
+      //      {
+      //         LogWriterPMemLib wal(NVM_FILE, NVM_SIZE);
+      //         vector<LogWriterPMemLib::Entry *> entries = LogWriterPMemLib::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+      //         ub8 ns_spend = RunWithTiming([&]() {
+      //            for (LogWriterPMemLib::Entry *entry : entries) {
+      //               wal.AddLogEntry(*entry);
+      //            }
+      //         });
+      //         if (TABLE_VIEW) {
+      //            printf("%20f", ns_spend * 1.0 / entries.size());
+      //            fflush(stdout);
+      //         } else {
+      //            PrintResult("libPmem", entry_size, ns_spend * 1.0 / entries.size());
+      //         }
+      //      }
 
       // Classic
       {
@@ -272,22 +272,22 @@ int main(int argc, char **argv)
          }
       }
 
-      // Zero aligned
-      {
-         LogWriterZeroAligned wal(nvm);
-         vector<LogWriterZeroAligned::Entry *> entries = LogWriterZeroAligned::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
-         ub8 ns_spend = RunWithTiming([&]() {
-            for (LogWriterZeroAligned::Entry *entry : entries) {
-               wal.AddLogEntry(*entry);
-            }
-         });
-         if (TABLE_VIEW) {
-            printf("%20f", ns_spend * 1.0 / entries.size());
-            fflush(stdout);
-         } else {
-            PrintResult("zeroAligned", entry_size, ns_spend * 1.0 / entries.size());
-         }
-      }
+      //      // Zero aligned
+      //      {
+      //         LogWriterZeroAligned wal(nvm);
+      //         vector<LogWriterZeroAligned::Entry *> entries = LogWriterZeroAligned::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+      //         ub8 ns_spend = RunWithTiming([&]() {
+      //            for (LogWriterZeroAligned::Entry *entry : entries) {
+      //               wal.AddLogEntry(*entry);
+      //            }
+      //         });
+      //         if (TABLE_VIEW) {
+      //            printf("%20f", ns_spend * 1.0 / entries.size());
+      //            fflush(stdout);
+      //         } else {
+      //            PrintResult("zeroAligned", entry_size, ns_spend * 1.0 / entries.size());
+      //         }
+      //      }
 
       // Zero blocked
       {
@@ -306,25 +306,25 @@ int main(int argc, char **argv)
          }
       }
 
-      // Zero simd
-      {
-         LogWriterZeroSimd wal(nvm);
-         vector<LogWriterZeroSimd::Entry *> entries = LogWriterZeroSimd::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
-         ub8 ns_spend = RunWithTiming([&]() {
-            for (LogWriterZeroSimd::Entry *entry : entries) {
-               wal.AddLogEntry(*entry);
-            }
-         });
-         if (TABLE_VIEW) {
-            printf("%20f", ns_spend * 1.0 / entries.size());
-            fflush(stdout);
-         } else {
-            PrintResult("zeroSimd", entry_size, ns_spend * 1.0 / entries.size());
-         }
-      }
-      if (TABLE_VIEW) {
-         printf("\n");
-      }
+      //      // Zero simd
+      //      {
+      //         LogWriterZeroSimd wal(nvm);
+      //         vector<LogWriterZeroSimd::Entry *> entries = LogWriterZeroSimd::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+      //         ub8 ns_spend = RunWithTiming([&]() {
+      //            for (LogWriterZeroSimd::Entry *entry : entries) {
+      //               wal.AddLogEntry(*entry);
+      //            }
+      //         });
+      //         if (TABLE_VIEW) {
+      //            printf("%20f", ns_spend * 1.0 / entries.size());
+      //            fflush(stdout);
+      //         } else {
+      //            PrintResult("zeroSimd", entry_size, ns_spend * 1.0 / entries.size());
+      //         }
+      //      }
+      //      if (TABLE_VIEW) {
+      //         printf("\n");
+      //      }
    }
 
    return 0;
