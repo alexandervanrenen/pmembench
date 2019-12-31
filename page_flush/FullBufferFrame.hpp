@@ -354,8 +354,8 @@ NvmBufferFrame *FullBufferFrame::FlushShadow(NvmBufferFrame *new_nvm_bf, ub8 pvn
       assert(!all_dirty && !dirty.all()); // -> otherwise, everything would have been resident as well
 
       // Otherwise:
-      //  1. Copy old data from old nvm dram (because not everything is in dram)
-      //  2. Do partial flush (necessary, because we would overwrite something)
+      //  1. Copy non-resident data from old nvm to new nvm (because not everything is in dram)
+      //  2. Write resident data directly from ram to new nvm
       for (ub4 cl_id = 0; cl_id<constants::kCacheLinesPerPage; cl_id += 4) {
          ub1 *src0 = (resident.test(cl_id + 0) ? aligned_page.GetPage().Ptr() : old_nvm_bf->GetPage().Ptr()) + ((cl_id + 0) * constants::kCacheLineByteCount);
          ub1 *dest0 = new_nvm_bf->GetPage().Ptr() + ((cl_id + 0) * constants::kCacheLineByteCount);
@@ -379,16 +379,14 @@ NvmBufferFrame *FullBufferFrame::FlushShadow(NvmBufferFrame *new_nvm_bf, ub8 pvn
    // 2. Mark new page as valid
    new_nvm_bf->dirty = true;
    new_nvm_bf->page_id = page_id;
-   alex_SFence();
+   alex_SFence(); // Able to avoid flush because of pvn trick (see paper)
    new_nvm_bf->pvn = pvn;
    alex_WriteBack(new_nvm_bf, constants::kCacheLineByteCount);
    alex_SFence();
 
    // Done
-#ifndef KEEP_DIRTY
    all_dirty = false;
    dirty.reset();
-#endif
    return old_nvm_bf;
 }
 // -------------------------------------------------------------------------------------
@@ -426,10 +424,8 @@ void FullBufferFrame::FlushMicroLog(MicroLog &log)
    }
    nvm_buffer_frame->dirty = true;
    alex_SFence();
-#ifndef KEEP_DIRTY
    dirty.reset();
    all_dirty = false;
-#endif
 
    // 4. Set log invalid
    log.page_id = constants::kInvalidPageId;

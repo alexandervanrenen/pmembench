@@ -15,10 +15,11 @@ using namespace std;
 
 // Config
 ub4 PAGE_COUNT; // How many pages to use
-ub4 CL_STEP; // The increment of cl between two experiments
+ub4 DIRTY_CL_COUNT; // How many cache lines are dirty
 string NVM_FILE; // Path to the nvm file
 ub4 THREAD_COUNT; // How many threads -> 0 runs single threaded config
 ub4 RUN_COUNT; // How often should the workload be run (only for MT)
+ub4 PAGE_COUNT_PER_THREAD;
 
 ub8 RunWithTiming(function<void()> foo)
 {
@@ -50,18 +51,21 @@ struct FlushTest {
    FlushTest(const string &nvm_file, ub8 page_count)
            : page_count(page_count)
              , ram(page_count * sizeof(FullBufferFrame))
-             , nvm(nvm_file, (page_count + 1) * sizeof(NvmBufferFrame))
+             , nvm(nvm_file, (page_count + 10) * sizeof(NvmBufferFrame)) // + 10 to have some space after the memory for the pages to put the micro log or the shadow-copy page of CoW
    {
       auto file = (nvm_file + "_pmemlib");
 
+      // Setup pmdk blk pool
+      ub8 pmemlib_pool_size = constants::kPageByteCount * page_count + PMEMBLK_MIN_POOL; // A bit to much, but ensures that it works..
       system(("rm -rf " + file).c_str());
-      pbp = pmemblk_create(file.c_str(), constants::kPageByteCount, constants::kPageByteCount * page_count * 1.5 /* for good measure */, 0666);
+      pbp = pmemblk_create(file.c_str(), constants::kPageByteCount, pmemlib_pool_size, 0666);
       if (pbp == NULL) {
          cout << "failed creating pmdk pmem pool" << endl;
          assert(false);
          throw;
       }
 
+      // Check that we got enough pages in the pool (should always work)
       ub4 nelements = pmemblk_nblock(pbp);
       if (nelements<page_count) {
          cout << "pmdk pool is too small" << endl;
@@ -85,9 +89,21 @@ struct FlushTest {
          GetRamBf(p)->SwapIn(p, nvm_bf);
          nvm_mapping[p] = nvm_bf;
       }
+
+      // All techniques (cow and micro log) need a small buffer, we put this after all regular pages
+      // The buffers also overlap because only one of them is used in a given experiment
+      // Kind of a hacky design, but good enough for some benchmark code
       free_nvm_bf = &nvm.GetNvmBufferFrame(page_count);
-      micro_log = reinterpret_cast<MicroLog *>(&nvm.GetNvmBufferFrame(page_count));
-      micro_log_2 = reinterpret_cast<MicroLog2 *>(&nvm.GetNvmBufferFrame(page_count));
+
+      // Logs need to be aligned nicely for SIMD cpy
+      ub1 *nice_aligned_position = reinterpret_cast<ub1 *>(&nvm.GetNvmBufferFrame(page_count));
+      while (ub8(nice_aligned_position) % 64 != 0) {
+         nice_aligned_position++;
+      }
+      micro_log = reinterpret_cast<MicroLog *>(nice_aligned_position);
+      micro_log_2 = reinterpret_cast<MicroLog2 *>(nice_aligned_position);
+      assert(reinterpret_cast<ub1 *>(micro_log) + sizeof(MicroLog)<nvm.Data() + nvm.GetByteCount());
+      assert(reinterpret_cast<ub1 *>(micro_log_2) + sizeof(MicroLog2)<nvm.Data() + nvm.GetByteCount());
    }
 
    // Set all DRAM content to 'a'
@@ -219,117 +235,117 @@ struct FlushTest {
    void CheckNvmContentEqualsTo(char c)
    {
       for (ub4 p = 0; p<page_count; ++p) {
+         assert(nvm_mapping[p]->page_id == p);
+         assert(GetMappedNvmBf(p)->page_id == p);
          for (ub4 i = 0; i<constants::kPageByteCount; ++i) {
-            assert(nvm_mapping[p]->page_id == p);
-            assert(GetMappedNvmBf(p)->page_id == p);
             assert(c == GetMappedNvmBf(p)->GetPage().Ptr()[i]);
          }
       }
    }
 };
 
-void RunBenchmarkThreaded(string tech, ub4 cl_count, bool all_resident, function<void(FlushTest &ft)> callback)
+void RunBenchmarkThreaded(string tech, bool all_resident, function<void(FlushTest &ft)> callback)
 {
-   for (ub4 thread_count = 1; thread_count<=THREAD_COUNT; thread_count++) {
-      atomic<ub4> ready_count(0);
-      atomic<bool> start_barrier(false);
-      vector<unique_ptr<thread>> threads;
-      vector<ub8> times(thread_count, 0);
-      for (ub4 tid = 0; tid<thread_count; tid++) {
-         threads.push_back(make_unique<thread>([&, tid]() {
-            FlushTest ft(NVM_FILE + string("_") + to_string(tid), PAGE_COUNT);
+   atomic<ub4> ready_count(0);
+   atomic<bool> start_barrier(false);
+   vector<unique_ptr<thread>> threads;
+   vector<ub8> times(THREAD_COUNT, 0);
+   for (ub4 tid = 0; tid<THREAD_COUNT; tid++) {
+      threads.push_back(make_unique<thread>([&, tid]() {
+         FlushTest ft(NVM_FILE + string("_") + to_string(tid), PAGE_COUNT_PER_THREAD);
+         ready_count++;
+         while (!start_barrier);
+         for (ub4 run = 0; run<RUN_COUNT; run++) {
             ft.InitializePages();
-            ft.MakeRandomCacheLinesDirty(cl_count, all_resident);
-            ready_count++;
-            while (!start_barrier);
-            for (ub4 run = 0; run<RUN_COUNT; run++) {
-               times[tid] += RunWithTiming([&]() { callback(ft); });
-            }
-            ft.CheckNvmContentEqualsTo('a');
-         }));
-      }
-      while (ready_count != thread_count);
-      start_barrier = true;
-      for (ub4 tid = 0; tid<thread_count; tid++) {
-         threads[tid]->join();
-      }
-
-      ub8 total_time = 0;
-      for (ub4 tid = 0; tid<thread_count; tid++) {
-         total_time += times[tid];
-      }
-      double avg_time = total_time * 1.0 / thread_count;
-      ub8 total_page_count = PAGE_COUNT * RUN_COUNT * thread_count;
-      ub8 byte_count = total_page_count * cl_count * constants::kCacheLineByteCount;
-      double page_per_second = (total_page_count * 1000000000) / (avg_time);
-
-      //@formatter:off
-      cout << "res"
-           << " tech= " << tech
-           << " cl_count= " << cl_count
-           << " thread_count= " << thread_count
-           << " page_count= " << PAGE_COUNT
-           << " avg_time= " << avg_time
-           << " perf(GB/s)= " << (byte_count / avg_time)
-           << " perf(pages/s)= " << page_per_second
-           << endl;
-      //@formatter:on
+            ft.MakeRandomCacheLinesDirty(DIRTY_CL_COUNT, all_resident);
+            times[tid] += RunWithTiming([&]() { callback(ft); });
+         }
+         ft.CheckNvmContentEqualsTo('a');
+      }));
    }
+   while (ready_count != THREAD_COUNT);
+   start_barrier = true;
+   for (ub4 tid = 0; tid<THREAD_COUNT; tid++) {
+      threads[tid]->join();
+   }
+
+   ub8 time_sum_of_all_threads = 0;
+   for (ub4 tid = 0; tid<THREAD_COUNT; tid++) {
+      time_sum_of_all_threads += times[tid];
+   }
+   double avg_time_per_thread = time_sum_of_all_threads * 1.0 / THREAD_COUNT;
+   ub8 total_page_count = PAGE_COUNT * RUN_COUNT;
+   ub8 byte_count = total_page_count * DIRTY_CL_COUNT * constants::kCacheLineByteCount;
+   double page_per_second = (total_page_count * 1000000000) / (avg_time_per_thread);
+
+   //@formatter:off
+   cout << "res"
+        << " tech= " << tech
+        << " dirty_cl_count= " << DIRTY_CL_COUNT
+        << " thread_count= " << THREAD_COUNT
+        << " page_count= " << PAGE_COUNT
+        << " avg_time= " << avg_time_per_thread
+        << " perf(GB/s)= " << (byte_count / avg_time_per_thread)
+        << " perf(pages/s)= " << page_per_second
+        << endl;
+   //@formatter:on
 }
 
 void RunMultiThreaded()
 {
-   for (ub4 cl_count = CL_STEP; cl_count<=constants::kCacheLinesPerPage; cl_count += CL_STEP) {
-      // Shadow some resident
-      RunBenchmarkThreaded("PMDK", cl_count, true, [](FlushTest &ft) {
-         ft.FlushAll_Shadow();
-      });
+   // PMDK
+   RunBenchmarkThreaded("PMDK", true, [](FlushTest &ft) {
+      ft.FlushAll_Shadow();
+   });
 
-      // Shadow some resident
-      RunBenchmarkThreaded("Shadow", cl_count, false, [](FlushTest &ft) {
-         ft.FlushAll_Shadow();
-      });
+   // Shadow some resident
+   RunBenchmarkThreaded("Shadow", false, [](FlushTest &ft) {
+      ft.FlushAll_Shadow();
+   });
 
-      // Shadow all resident
-      RunBenchmarkThreaded("ShadowResident", cl_count, true, [](FlushTest &ft) {
-         ft.FlushAll_Shadow();
-      });
+   // Shadow all resident
+   RunBenchmarkThreaded("ShadowResident", true, [](FlushTest &ft) {
+      ft.FlushAll_Shadow();
+   });
 
-      // Micro log
-      RunBenchmarkThreaded("Micro", cl_count, false, [](FlushTest &ft) {
-         ft.FlushAll_MicroLog();
-      });
-   }
+   // Micro log
+   RunBenchmarkThreaded("Micro", false, [](FlushTest &ft) {
+      ft.FlushAll_MicroLog();
+   });
 }
 
 // clang++ -DSTREAMING=1 page_flush/page_flush.cpp -std=c++17 -Invml/src/include/ nvml/src/nondebug/libpmem.a nvml/src/nondebug/libpmemblk.a -g0 -O3 -march=native -lpthread -lndctl -ldaxctl
 int main(int argc, char **argv)
 {
    if (argc != 6) {
-      cout << "usage: " << argv[0] << " page_count cl_step thread_count run_count path" << endl;
+      cout << "usage: " << argv[0] << " page_count dirty_cl_count thread_count run_count path" << endl;
       throw;
    }
 
-   ub4 PAGE_COUNT = atof(argv[1]);
-   ub4 CL_STEP = atof(argv[2]);
-   ub4 THREAD_COUNT = atof(argv[3]);
-   ub4 RUN_COUNT = atof(argv[4]);
-   string NVM_FILE = argv[5];
+   PAGE_COUNT = atof(argv[1]);
+   DIRTY_CL_COUNT = atof(argv[2]);
+   THREAD_COUNT = atof(argv[3]);
+   RUN_COUNT = atof(argv[4]);
+   NVM_FILE = argv[5];
+   PAGE_COUNT_PER_THREAD = PAGE_COUNT / THREAD_COUNT;
+
+   if (DIRTY_CL_COUNT == 0 && DIRTY_CL_COUNT>constants::kCacheLinesPerPage) {
+      cout << "invalid DIRTY_CL_COUNT " << DIRTY_CL_COUNT << endl;
+      exit(-1);
+   }
 
    cerr << "Config:" << endl;
    cerr << "----------------------------" << endl;
-   cerr << "PAGE_COUNT:   " << PAGE_COUNT << endl;
-   cerr << "CL_STEP:      " << CL_STEP << endl;
-   cerr << "THREAD_COUNT: " << THREAD_COUNT << endl;
-   cerr << "RUN_COUNT:    " << RUN_COUNT << endl;
-   cerr << "NVM_FILE:     " << NVM_FILE << endl;
+   cerr << "PAGE_COUNT:     " << PAGE_COUNT << endl;
+   cerr << "DIRTY_CL_COUNT: " << DIRTY_CL_COUNT << endl;
+   cerr << "THREAD_COUNT:   " << THREAD_COUNT << endl;
+   cerr << "RUN_COUNT:      " << RUN_COUNT << endl;
+   cerr << "NVM_FILE:       " << NVM_FILE << endl;
 #ifdef STREAMING
-   cerr << "STREAMING:    " << "yes" << endl;
+   cerr << "STREAMING:      " << "yes" << endl;
 #else
-   cerr << "STREAMING:    " << "no" << endl;
+   cerr << "STREAMING:      " << "no" << endl;
 #endif
-
-   return 0;
 
    RunMultiThreaded();
 
