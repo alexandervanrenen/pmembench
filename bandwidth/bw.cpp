@@ -92,7 +92,7 @@ int main(int argc, char **argv)
             while (((uint64_t) keys) % 64 != 0) // Align to 64 byte
                keys++;
          } else {
-            int fd = open((PATH + "file_" + to_string(t)).c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+            int fd = open((PATH + "/file_" + to_string(t)).c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
             int td = ftruncate(fd, chunk_size);
             if (fd<0 || td<0) {
                cout << "unable to create file" << endl;
