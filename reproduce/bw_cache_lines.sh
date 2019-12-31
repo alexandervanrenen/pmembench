@@ -1,4 +1,4 @@
-./reproduce/validate.sh
+./reproduce/validate.sh || exit -1
 
 # Reproduces data for figure 1
 # PMem Bandwidth: Varying Access Granularity
