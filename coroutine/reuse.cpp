@@ -5,6 +5,11 @@
 #include <cstring>
 #include <vector>
 #include <array>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <immintrin.h>
 // -------------------------------------------------------------------------------------
 using namespace std;
@@ -29,7 +34,7 @@ public:
    /*
     * The promise is a proxy for the compiler generated code to deal with one specific coroutine.
     *
-    * From https://lewissbaker.github.io/2017/11/17/understanding-operator-co-await:
+    * From https://lewissbaker.github.io/2017/11/17/understanding-operator-co-await
     * The Promise interface specifies methods for customising the behaviour of the coroutine itself.
     * The library-writer is able to customise what happens when the coroutine is called, what happens
     * when the coroutine returns (either by normal means or via an unhandled exception) and customise
@@ -38,8 +43,8 @@ public:
    struct promise_type {
       static void *memory_buffer;
       static OverridingList<void *> free_list;
-      static const uint64_t coroutine_count = 10; // Number of coroutines
-      static const uint64_t coroutine_size = 88; // Just for debugging, in this case the size of each coroutine object should be the same
+      static const uint64_t coroutine_count = 1000; // Number of coroutines
+      static const uint64_t coroutine_size = 256; // Just for debugging, in this case the size of each coroutine object should be the same
 
       static void Setup()
       {
@@ -53,7 +58,7 @@ public:
       {
          //         cout << "x alloc: " << n << endl;
          assert(memory_buffer && "Allocator not setup, use Setup().");
-         assert(n<=coroutine_size && "Coroutine size is to large for buffer, increase coroutine_size.");
+         assert(n<=coroutine_size && "Coroutine size is too large for buffer, increase coroutine_size.");
          return free_list.Pop();
       }
 
@@ -146,7 +151,7 @@ public:
    /*
     * The awaitable (and awaiter) is a way to handle the scheduling of multiple coroutines.
     *
-    * From https://lewissbaker.github.io/2017/11/17/understanding-operator-co-await:
+    * From https://lewissbaker.github.io/2017/11/17/understanding-operator-co-await
     * The Awaitable interface specifies methods that control the semantics of a co_await expression.
     * When a value is co_awaited, the code is translated into a series of calls to methods on the
     * awaitable object that allow it to specify: whether to suspend the current coroutine, execute
@@ -303,18 +308,20 @@ Task<int> Node_Insert_Coro(Node *node, uint64_t key, uint64_t value, Scheduler &
    //@formatter:on
 }
 // -------------------------------------------------------------------------------------
-uint64_t insert_count;
-uint64_t node_count;
-uint64_t group_size;
-bool use_coroutines;
+uint64_t INSERT_COUNT;
+uint64_t NODE_COUNT;
+uint64_t GROUP_SIZE;
+bool USE_COROUTINES;
+bool USE_RAM;
+string PATH;
 // -------------------------------------------------------------------------------------
-void DoInsertsWithCoroutines(vector<Node> &nodes, const vector<uint32_t> &operations, uint32_t group_size)
+void DoInsertsWithCoroutines(Node *nodes, const vector<uint32_t> &operations, uint32_t group_size)
 {
    Scheduler scheduler;
 
    vector<Task<int>> groups;
    uint32_t i = 0;
-   for (; i + group_size - 1<insert_count; i += group_size) {
+   for (; i + group_size - 1<INSERT_COUNT; i += group_size) {
       if (operations[i + 0] == operations[i + 1]) {
          cout << "collision in node: " << operations[i + 0] << endl;
       }
@@ -336,47 +343,68 @@ void DoInsertsWithCoroutines(vector<Node> &nodes, const vector<uint32_t> &operat
    }
 
    // Need to do some more inserts if insert_count%group_size != 0
-   for (; i<insert_count; i++) {
+   for (; i<INSERT_COUNT; i++) {
       Node_Insert_Normal(&nodes[operations[i]], i, i);
    }
 }
 // -------------------------------------------------------------------------------------
-void DoInsertsNormal(vector<Node> &nodes, const vector<uint32_t> &operations)
+void DoInsertsNormal(Node *nodes, const vector<uint32_t> &operations)
 {
-   for (uint32_t i = 0; i<insert_count; i++) {
+   for (uint32_t i = 0; i<INSERT_COUNT; i++) {
       Node_Insert_Normal(&nodes[operations[i]], i, i);
    }
 }
 // -------------------------------------------------------------------------------------
-template<class T>
-void DoTimed(const T &foo)
+uint8_t *AllocateMemory(bool use_ram, uint64_t byte_count, uint32_t id)
 {
-   auto from = chrono::high_resolution_clock::now();
-   foo();
-   auto till = chrono::high_resolution_clock::now();
-   uint64_t ms = chrono::duration_cast<chrono::milliseconds>(till - from).count();
-   cout << "time: " << ms << "ms" << endl;
+   if (use_ram) {
+      uint8_t *result = new uint8_t[byte_count + 64];
+      while (((uint64_t) result) % 64 != 0) // Align to 64 byte
+         result++;
+      return result;
+   } else {
+      int fd = open((PATH + "/file_" + to_string(id)).c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+      int td = ftruncate(fd, byte_count);
+      if (fd<0 || td<0) {
+         cout << "unable to create file" << endl;
+         exit(-1);
+      }
+      uint8_t *result = (uint8_t *) mmap(nullptr, byte_count, PROT_WRITE, MAP_SHARED, fd, 0);
+      return result;
+   }
+}
+// -------------------------------------------------------------------------------------
+Node *CreateNodes(uint32_t id)
+{
+   uint8_t *mem = AllocateMemory(USE_RAM, NODE_COUNT * sizeof(Node), id);
+   Node *nodes = (Node *) mem;
+   for (uint32_t i = 0; i<NODE_COUNT; i++) {
+      new(nodes + i) Node();
+   }
+   return nodes;
 }
 // -------------------------------------------------------------------------------------
 void Validate(const vector<uint32_t> &operations)
 {
 #ifndef NDEBUG
    // Normal
-   vector<Node> normal_nodes(node_count);
+   Node *normal_nodes = CreateNodes(0);
    DoInsertsNormal(normal_nodes, operations);
 
    // Do Coroutine
-   vector<Node> coro_nodes(node_count);
-   DoInsertsWithCoroutines(coro_nodes, operations, group_size);
+   Node *coro_nodes = CreateNodes(0);
+   DoInsertsWithCoroutines(coro_nodes, operations, GROUP_SIZE);
 
-   for (uint32_t i = 0; i<node_count; i++) {
+   for (uint32_t i = 0; i<NODE_COUNT; i++) {
       if (!(coro_nodes[i] == normal_nodes[i])) {
          cout << "ERROR: in node " << i << endl;
          exit(-1);
       }
    }
-   assert(memcmp(&coro_nodes[0], &normal_nodes[0], node_count * sizeof(Node)) == 0);
+   assert(memcmp(coro_nodes, normal_nodes, NODE_COUNT * sizeof(Node)) == 0);
    cout << "Validation: OK!" << endl;
+   cout << "exiting .. run with NDEBUG to do the benchmark" << endl; // Might be a good idea to not run benchmark AND validation, to save time and I do not free nodes .. ;)
+   exit(0);
 #endif
 }
 // -------------------------------------------------------------------------------------
@@ -384,52 +412,71 @@ int main(int argc, char **argv)
 {
    Task<int>::promise_type::Setup();
 
-   if (argc != 5) {
-      cout << "usage: " << argv[0] << " node_count insert_count group_size [coro|normal]" << endl;
+   if (argc != 7) {
+      cout << "usage: " << argv[0] << " node_count insert_count group_size [coro|normal] [ram|nvm] path" << endl;
       throw;
    }
 
-   node_count = atof(argv[1]);
-   insert_count = atof(argv[2]);
-   group_size = atof(argv[3]);
-   use_coroutines = argv[4] == string("coro");
+   NODE_COUNT = atof(argv[1]);
+   INSERT_COUNT = atof(argv[2]);
+   GROUP_SIZE = atof(argv[3]);
+   USE_COROUTINES = argv[4] == string("coro");
+   USE_RAM = argv[5] == string("ram");
+   PATH = argv[6];
 
    // Config
    cout << "Config" << endl;
    cout << "------" << endl;
-   cout << "node_count     " << node_count << endl;
-   cout << "insert_count   " << insert_count << endl;
-   cout << "group_size     " << group_size << endl;
-   cout << "use_coroutines " << (use_coroutines ? "yes" : "no") << endl;
+   cout << "node_count     " << NODE_COUNT << endl;
+   cout << "insert_count   " << INSERT_COUNT << endl;
+   cout << "group_size     " << GROUP_SIZE << endl;
+   cout << "use_coroutines " << (USE_COROUTINES ? "yes" : "no") << endl;
+   cout << "use_ram        " << (USE_RAM ? "yes" : "no") << endl;
+   cout << "path           " << PATH << endl;
    cout << "------" << endl;
 
-   if (group_size>insert_count || group_size == 0) {
+   if (GROUP_SIZE>INSERT_COUNT || GROUP_SIZE == 0) {
       cout << "ERROR: Invalid group_size." << endl;
       return -1;
    }
 
    // Setup indexes for inserts
    vector<uint32_t> operations;
-   operations.reserve(insert_count);
-   uint64_t nodes_per_group = (node_count / group_size);
-   for (uint64_t op = 0; op<insert_count; op++) {
-      uint64_t group = op % group_size;
+   operations.reserve(INSERT_COUNT);
+   uint64_t nodes_per_group = (NODE_COUNT / GROUP_SIZE);
+   for (uint64_t op = 0; op<INSERT_COUNT; op++) {
+      uint64_t group = op % GROUP_SIZE;
       operations.push_back(nodes_per_group * group + rand() % nodes_per_group);
    }
 
-   // Perform experiment
-   //   if (use_coroutines) {
-   //      // Do Coroutine
-   //      vector<Node> coro_nodes(node_count);
-   //      DoInsertsWithCoroutines(coro_nodes, operations, group_size);
-   //   } else {
-   //      // Do Normal
-   //      vector<Node> normal_nodes(node_count);
-   //      DoInsertsNormal(normal_nodes, operations);
-   //   }
+   // For testing if it works !!
+   // Validate(operations);
 
-   // Validate
-   Validate(operations);
+   // Perform experiment
+   Node *nodes = CreateNodes(0);
+
+   auto from = chrono::high_resolution_clock::now();
+   if (USE_COROUTINES) {
+      DoInsertsWithCoroutines(nodes, operations, GROUP_SIZE);
+   } else {
+      DoInsertsNormal(nodes, operations);
+   }
+   auto till = chrono::high_resolution_clock::now();
+   uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(till - from).count();
+   uint64_t inserts_per_second = (INSERT_COUNT * 1e9) / ns;
+
+   //@formatter:off
+   cout << "res: "
+        << " node_count: " << NODE_COUNT
+        << " insert_count: " << INSERT_COUNT
+        << " group_size: " << GROUP_SIZE
+        << " use_coroutines: " << (USE_COROUTINES ? "yes" : "no")
+        << " use_ram: " << (USE_RAM ? "yes" : "no")
+        << " byte_count(GB): " << (NODE_COUNT * sizeof(Node)) / 1000000 / 1000.0f
+        << " path: " << PATH
+        << " inserts/s: " << inserts_per_second
+        << endl;
+   //@formatter:on
 
    return 0;
 }
