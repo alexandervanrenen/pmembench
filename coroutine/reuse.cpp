@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <immintrin.h>
+#include <xmmintrin.h>
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
@@ -27,6 +28,8 @@ inline void SFence()
 {
    _mm_sfence();
 }
+// -------------------------------------------------------------------------------------
+// -------------------------------- Coro Boilerplate Code ------------------------------
 // -------------------------------------------------------------------------------------
 template<class RESULT>
 class Task {
@@ -191,6 +194,15 @@ public:
    }
 };
 // -------------------------------------------------------------------------------------
+uint64_t INSERT_COUNT;
+uint64_t NODE_COUNT;
+uint64_t GROUP_SIZE;
+uint64_t RUN_COUNT = 1;
+bool USE_RAM;
+string PATH;
+// -------------------------------------------------------------------------------------
+// -------------------------------- Tree Code ------------------------------------------
+// -------------------------------------------------------------------------------------
 struct Node {
    static const uint32_t CAPACITY = 32;
 
@@ -206,7 +218,7 @@ struct Node {
 
    Entry entries[CAPACITY];
 
-   Node()
+   void Initialize()
    {
       free_bits = ~0; // Everything is free
       memset(fingerprints, 0, CAPACITY * sizeof(uint8_t));
@@ -256,6 +268,8 @@ void Node_SetSlotAsUsed(Node *node, uint32_t slot)
    node->free_bits &= (~(1ull << slot));
 }
 // -------------------------------------------------------------------------------------
+// -------------------------------- Normal Insert --------------------------------------
+// -------------------------------------------------------------------------------------
 void Node_Insert_Normal(Node *node, uint64_t key, uint64_t value)
 {
    uint32_t slot = Node_GetFirstFreeSlot(node);
@@ -280,27 +294,49 @@ void Node_Insert_Normal(Node *node, uint64_t key, uint64_t value)
    SFence();
 }
 // -------------------------------------------------------------------------------------
-Task<int> Node_Insert_Coro(Node *node, uint64_t key, uint64_t value, Scheduler &scheduler)
+void DoInsertsNormal(Node *nodes, const vector<uint32_t> &operations)
 {
-   uint32_t slot = Node_GetFirstFreeSlot(node);
+   for (uint32_t i = 0; i<INSERT_COUNT; i++) {
+      Node_Insert_Normal(&nodes[operations[i]], i, i);
+   }
+}
+// -------------------------------------------------------------------------------------
+// -------------------------------- Coro FUll ------------------------------------------
+// -------------------------------------------------------------------------------------
+Task<int> Node_InsertCoroFull(Node *node, uint64_t key, uint64_t value, Scheduler &scheduler)
+{
+   // 1. Prefetch slots
+   _mm_prefetch(&node->free_bits, _MM_HINT_T1);
+   //@formatter:off
+   co_await scheduler.schedule();
+   //@formatter:on
 
-   // Full ? -> reset
+   // Figure out slot to put key / value
+   uint32_t slot = Node_GetFirstFreeSlot(node);
    if (slot == 32) {
-      node->free_bits = 0;
+      node->free_bits = 0; // Simply reset node when full
       slot = 0;
    }
+
+   // 2. Prefetch key/value
+   _mm_prefetch(&node->entries[slot], _MM_HINT_T1);
+   //@formatter:off
+   co_await scheduler.schedule();
+   //@formatter:on
 
    // Add new entry and persist
    node->entries[slot].key = key;
    node->entries[slot].value = value;
    node->fingerprints[slot] = FingerprintHash(key);
+
+   // 3. Write back
    Clwb(&node->entries[slot].key);
    Clwb(&node->fingerprints[slot]);
    //@formatter:off
    co_await scheduler.schedule();
    //@formatter:on
 
-   // Set new entry valid and persist
+   // 4. Set new entry valid and persist
    Node_SetSlotAsUsed(node, slot);
    Clwb(&node->free_bits);
    //@formatter:off
@@ -308,49 +344,198 @@ Task<int> Node_Insert_Coro(Node *node, uint64_t key, uint64_t value, Scheduler &
    //@formatter:on
 }
 // -------------------------------------------------------------------------------------
-uint64_t INSERT_COUNT;
-uint64_t NODE_COUNT;
-uint64_t GROUP_SIZE;
-bool USE_COROUTINES;
-bool USE_RAM;
-string PATH;
-// -------------------------------------------------------------------------------------
-void DoInsertsWithCoroutines(Node *nodes, const vector<uint32_t> &operations, uint32_t group_size)
+void DoInsertsCoroFull(Node *nodes, const vector<uint32_t> &operations)
 {
    Scheduler scheduler;
 
    vector<Task<int>> groups;
    uint32_t i = 0;
-   for (; i + group_size - 1<INSERT_COUNT; i += group_size) {
-      if (operations[i + 0] == operations[i + 1]) {
-         cout << "collision in node: " << operations[i + 0] << endl;
+   for (; i + GROUP_SIZE - 1<INSERT_COUNT; i += GROUP_SIZE) {
+      // 1. task: fetch node
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         uint32_t node_id = operations[i + g];
+         groups.emplace_back(Node_InsertCoroFull(&nodes[node_id], i + g, i + g, scheduler));
       }
 
-      // 1. task: persist key/value
-      for (uint32_t g = 0; g<group_size; g++) {
-         uint32_t node_id = operations[i + g];
-         groups.emplace_back(Node_Insert_Coro(&nodes[node_id], i + g, i + g, scheduler));
+      // 2. task: fetch key/value
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         groups[g].coroutine_handle.resume();
+      }
+
+      // 3. task: persist key/value/fingerprint
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         groups[g].coroutine_handle.resume();
       }
       SFence();
 
-      // 2. task: set valid
-      for (uint32_t g = 0; g<group_size; g++) {
+      // 4. task: set valid
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
          groups[g].coroutine_handle.resume();
          assert(groups[g].coroutine_handle.done());
       }
-      groups.clear();
       SFence();
+      groups.clear();
    }
 
-   // Need to do some more inserts if insert_count%group_size != 0
+   // Need to do some more inserts if insert_count%GROUP_SIZE != 0
    for (; i<INSERT_COUNT; i++) {
       Node_Insert_Normal(&nodes[operations[i]], i, i);
    }
 }
 // -------------------------------------------------------------------------------------
-void DoInsertsNormal(Node *nodes, const vector<uint32_t> &operations)
+// -------------------------------- Coro Read ------------------------------------------
+// -------------------------------------------------------------------------------------
+Task<int> Node_InsertCoroRead(Node *node, uint64_t key, uint64_t value, Scheduler &scheduler)
 {
-   for (uint32_t i = 0; i<INSERT_COUNT; i++) {
+   // 1. Prefetch slots
+   _mm_prefetch(&node->free_bits, _MM_HINT_T1);
+   //@formatter:off
+   co_await scheduler.schedule();
+   //@formatter:on
+
+   // Figure out slot to put key / value
+   uint32_t slot = Node_GetFirstFreeSlot(node);
+   if (slot == 32) {
+      node->free_bits = 0; // Simply reset node when full
+      slot = 0;
+   }
+
+   // 2. Prefetch key/value
+   _mm_prefetch(&node->entries[slot], _MM_HINT_T1);
+   //@formatter:off
+   co_await scheduler.schedule();
+   //@formatter:on
+
+   // Add new entry and persist
+   node->entries[slot].key = key;
+   node->entries[slot].value = value;
+   node->fingerprints[slot] = FingerprintHash(key);
+
+   // 3. Write back
+   Clwb(&node->entries[slot].key);
+   Clwb(&node->fingerprints[slot]);
+   SFence();
+
+   // 4. Set new entry valid and persist
+   Node_SetSlotAsUsed(node, slot);
+   Clwb(&node->free_bits);
+   SFence();
+
+   //@formatter:off
+   co_return 1;
+   //@formatter:on
+}
+// -------------------------------------------------------------------------------------
+void DoInsertsCoroRead(Node *nodes, const vector<uint32_t> &operations)
+{
+   Scheduler scheduler;
+
+   vector<Task<int>> groups;
+   uint32_t i = 0;
+   for (; i + GROUP_SIZE - 1<INSERT_COUNT; i += GROUP_SIZE) {
+      // 1. task: fetch node
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         uint32_t node_id = operations[i + g];
+         groups.emplace_back(Node_InsertCoroRead(&nodes[node_id], i + g, i + g, scheduler));
+      }
+
+      // 2. task: fetch key/value
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         groups[g].coroutine_handle.resume();
+      }
+
+      // 3. task: set valid
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         groups[g].coroutine_handle.resume();
+         assert(groups[g].coroutine_handle.done());
+      }
+      groups.clear();
+   }
+
+   // Need to do some more inserts if insert_count%GROUP_SIZE != 0
+   for (; i<INSERT_COUNT; i++) {
+      Node_Insert_Normal(&nodes[operations[i]], i, i);
+   }
+}
+// -------------------------------------------------------------------------------------
+// -------------------------------- Coro Write -----------------------------------------
+// -------------------------------------------------------------------------------------
+Task<int> Node_InsertCoroWrite(Node *node, uint64_t key, uint64_t value, Scheduler &scheduler)
+{
+   // 1. Prefetch slots
+   _mm_prefetch(&node->free_bits, _MM_HINT_T1);
+   //@formatter:off
+   co_await scheduler.schedule();
+   //@formatter:on
+
+   // Figure out slot to put key / value
+   uint32_t slot = Node_GetFirstFreeSlot(node);
+   if (slot == 32) {
+      node->free_bits = 0; // Simply reset node when full
+      slot = 0;
+   }
+
+   // 2. Prefetch key/value
+   _mm_prefetch(&node->entries[slot], _MM_HINT_T1);
+   //@formatter:off
+   co_await scheduler.schedule();
+   //@formatter:on
+
+   // Add new entry and persist
+   node->entries[slot].key = key;
+   node->entries[slot].value = value;
+   node->fingerprints[slot] = FingerprintHash(key);
+
+   // 3. Write back
+   Clwb(&node->entries[slot].key);
+   Clwb(&node->fingerprints[slot]);
+   //@formatter:off
+   co_await scheduler.schedule();
+   //@formatter:on
+
+   // 4. Set new entry valid and persist
+   Node_SetSlotAsUsed(node, slot);
+   Clwb(&node->free_bits);
+   //@formatter:off
+   co_return 1;
+   //@formatter:on
+}
+// -------------------------------------------------------------------------------------
+void DoInsertsCoroWrite(Node *nodes, const vector<uint32_t> &operations)
+{
+   Scheduler scheduler;
+
+   vector<Task<int>> groups;
+   uint32_t i = 0;
+   for (; i + GROUP_SIZE - 1<INSERT_COUNT; i += GROUP_SIZE) {
+      // 1. task: fetch node
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         uint32_t node_id = operations[i + g];
+         groups.emplace_back(Node_InsertCoroWrite(&nodes[node_id], i + g, i + g, scheduler));
+      }
+
+      // 2. task: fetch key/value
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         groups[g].coroutine_handle.resume();
+      }
+
+      // 3. task: persist key/value/fingerprint
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         groups[g].coroutine_handle.resume();
+      }
+      SFence();
+
+      // 4. task: set valid
+      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         groups[g].coroutine_handle.resume();
+         assert(groups[g].coroutine_handle.done());
+      }
+      SFence();
+      groups.clear();
+   }
+
+   // Need to do some more inserts if insert_count%GROUP_SIZE != 0
+   for (; i<INSERT_COUNT; i++) {
       Node_Insert_Normal(&nodes[operations[i]], i, i);
    }
 }
@@ -384,17 +569,23 @@ Node *CreateNodes(uint32_t id)
    return nodes;
 }
 // -------------------------------------------------------------------------------------
-void Validate(const vector<uint32_t> &operations)
+template<class T>
+void Validate(const vector<uint32_t> &operations, const T &foo)
 {
 #ifndef NDEBUG
-   // Normal
+   // Allocate nodes
    Node *normal_nodes = CreateNodes(0);
-   DoInsertsNormal(normal_nodes, operations);
-
-   // Do Coroutine
    Node *coro_nodes = CreateNodes(0);
-   DoInsertsWithCoroutines(coro_nodes, operations, GROUP_SIZE);
+   for (uint32_t i = 0; i<NODE_COUNT; i++) {
+      normal_nodes[i].Initialize();
+      coro_nodes[i].Initialize();
+   }
 
+   // Execute normal and whatever else
+   DoInsertsNormal(normal_nodes, operations);
+   foo(coro_nodes, operations);
+
+   // Validate
    for (uint32_t i = 0; i<NODE_COUNT; i++) {
       if (!(coro_nodes[i] == normal_nodes[i])) {
          cout << "ERROR: in node " << i << endl;
@@ -408,21 +599,50 @@ void Validate(const vector<uint32_t> &operations)
 #endif
 }
 // -------------------------------------------------------------------------------------
+template<class T>
+void DoExperiment(Node *nodes, const vector<uint32_t> &operations, const string &coro_style, const T &foo)
+{
+   // Initialize nodes
+   for (uint32_t i = 0; i<NODE_COUNT; i++) {
+      nodes[i].Initialize();
+   }
+
+   auto from = chrono::high_resolution_clock::now();
+   for (uint32_t run = 0; run<RUN_COUNT; run++) {
+      foo(nodes, operations);
+   }
+   auto till = chrono::high_resolution_clock::now();
+   uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(till - from).count();
+   uint64_t inserts_per_second = (INSERT_COUNT * RUN_COUNT * 1e9) / ns;
+
+   //@formatter:off
+   cout << "res: "
+        << " node_count: " << NODE_COUNT
+        << " insert_count: " << INSERT_COUNT
+        << " runs: " << RUN_COUNT
+        << " group_size: " << GROUP_SIZE
+        << " coro_style: " << coro_style
+        << " byte_count(GB): " << (NODE_COUNT * sizeof(Node)) / 1000000 / 1000.0f
+        << " path: " << PATH
+        << " inserts/s: " << inserts_per_second
+        << endl;
+   //@formatter:on
+}
+// -------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
    Task<int>::promise_type::Setup();
 
-   if (argc != 7) {
-      cout << "usage: " << argv[0] << " node_count insert_count group_size [coro|normal] [ram|nvm] path" << endl;
+   if (argc != 6) {
+      cout << "usage: " << argv[0] << " node_count insert_count group_size [ram|nvm] path" << endl;
       throw;
    }
 
    NODE_COUNT = atof(argv[1]);
    INSERT_COUNT = atof(argv[2]);
    GROUP_SIZE = atof(argv[3]);
-   USE_COROUTINES = argv[4] == string("coro");
-   USE_RAM = argv[5] == string("ram");
-   PATH = argv[6];
+   USE_RAM = argv[4] == string("ram");
+   PATH = argv[5];
 
    // Config
    cout << "Config" << endl;
@@ -430,7 +650,6 @@ int main(int argc, char **argv)
    cout << "node_count     " << NODE_COUNT << endl;
    cout << "insert_count   " << INSERT_COUNT << endl;
    cout << "group_size     " << GROUP_SIZE << endl;
-   cout << "use_coroutines " << (USE_COROUTINES ? "yes" : "no") << endl;
    cout << "use_ram        " << (USE_RAM ? "yes" : "no") << endl;
    cout << "path           " << PATH << endl;
    cout << "------" << endl;
@@ -450,33 +669,14 @@ int main(int argc, char **argv)
    }
 
    // For testing if it works !!
-   // Validate(operations);
+   //   Validate(operations, DoInsertsCoroRead);
 
    // Perform experiment
    Node *nodes = CreateNodes(0);
-
-   auto from = chrono::high_resolution_clock::now();
-   if (USE_COROUTINES) {
-      DoInsertsWithCoroutines(nodes, operations, GROUP_SIZE);
-   } else {
-      DoInsertsNormal(nodes, operations);
-   }
-   auto till = chrono::high_resolution_clock::now();
-   uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(till - from).count();
-   uint64_t inserts_per_second = (INSERT_COUNT * 1e9) / ns;
-
-   //@formatter:off
-   cout << "res: "
-        << " node_count: " << NODE_COUNT
-        << " insert_count: " << INSERT_COUNT
-        << " group_size: " << GROUP_SIZE
-        << " use_coroutines: " << (USE_COROUTINES ? "yes" : "no")
-        << " use_ram: " << (USE_RAM ? "yes" : "no")
-        << " byte_count(GB): " << (NODE_COUNT * sizeof(Node)) / 1000000 / 1000.0f
-        << " path: " << PATH
-        << " inserts/s: " << inserts_per_second
-        << endl;
-   //@formatter:on
+   DoExperiment(nodes, operations, "scalar", DoInsertsNormal);
+   DoExperiment(nodes, operations, "coro_read", DoInsertsCoroRead);
+   DoExperiment(nodes, operations, "coro_write", DoInsertsCoroWrite);
+   DoExperiment(nodes, operations, "coro_full", DoInsertsCoroFull);
 
    return 0;
 }
