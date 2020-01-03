@@ -544,11 +544,7 @@ uint8_t *AllocateMemory(bool use_ram, uint64_t byte_count, uint32_t id)
 Node *CreateNodes(uint32_t id)
 {
    uint8_t *mem = AllocateMemory(USE_RAM, NODE_COUNT * sizeof(Node), id);
-   Node *nodes = (Node *) mem;
-   for (uint32_t i = 0; i<NODE_COUNT; i++) {
-      new(nodes + i) Node();
-   }
-   return nodes;
+   return (Node *) mem;
 }
 // -------------------------------------------------------------------------------------
 template<class T>
