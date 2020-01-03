@@ -282,7 +282,8 @@ uint64_t Node_Lookup_Normal(Node *node, uint32_t key)
       }
    }
 
-   throw;
+   assert(false); // No negative lookups
+   return 0;
 }
 // -------------------------------------------------------------------------------------
 uint64_t DoLookupNormal(Node *nodes, const vector<Operation> &operations)
@@ -322,7 +323,10 @@ Task<int> Node_LookupCoroRead(Node *node, uint32_t key, Scheduler &scheduler)
       }
    }
 
-   throw;
+   assert(false); // No negative lookups
+   //@formatter:off
+   co_return 0;
+   //@formatter:on
 }
 // -------------------------------------------------------------------------------------
 uint64_t DoLookupCoroRead(Node *nodes, const vector<Operation> &operations)
@@ -355,7 +359,7 @@ uint64_t DoLookupCoroRead(Node *nodes, const vector<Operation> &operations)
       groups.clear();
    }
 
-   // Need to do some more inserts if insert_count%GROUP_SIZE != 0
+   // Need to do some more lookups if lookup_count%GROUP_SIZE != 0
    for (; i<LOOKUP_COUNT; i++) {
       sum += Node_Lookup_Normal(&nodes[operations[i].node_id], operations[i].key);
    }
@@ -430,9 +434,10 @@ void DoExperiment(Node *nodes, const vector<Operation> &operations, const string
       nodes[i].Initialize();
    }
 
+   uint64_t res = 0;
    auto from = chrono::high_resolution_clock::now();
    for (uint32_t run = 0; run<RUN_COUNT; run++) {
-      foo(nodes, operations);
+      res = foo(nodes, operations);
    }
    auto till = chrono::high_resolution_clock::now();
    uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(till - from).count();
@@ -441,13 +446,14 @@ void DoExperiment(Node *nodes, const vector<Operation> &operations, const string
    //@formatter:off
    cout << "res: "
         << " node_count: " << NODE_COUNT
-        << " insert_count: " << LOOKUP_COUNT
+        << " lookup_count: " << LOOKUP_COUNT
         << " runs: " << RUN_COUNT
         << " group_size: " << GROUP_SIZE
         << " coro_style: " << coro_style
         << " use_ram: " << (USE_RAM ? "yes" : "no")
         << " byte_count(GB): " << (NODE_COUNT * sizeof(Node)) / 1000000 / 1000.0f
         << " path: " << PATH
+        << " res: " << res
         << " lookups/s: " << lookups_per_second
         << endl;
    //@formatter:on
@@ -458,7 +464,7 @@ int main(int argc, char **argv)
    Task<int>::promise_type::Setup();
 
    if (argc != 6) {
-      cout << "usage: " << argv[0] << " node_count insert_count group_size [ram|nvm] path" << endl;
+      cout << "usage: " << argv[0] << " node_count lookup_count group_size [ram|nvm] path" << endl;
       throw;
    }
 
@@ -472,7 +478,7 @@ int main(int argc, char **argv)
    cout << "Config" << endl;
    cout << "------" << endl;
    cout << "node_count     " << NODE_COUNT << endl;
-   cout << "insert_count   " << LOOKUP_COUNT << endl;
+   cout << "lookup_count   " << LOOKUP_COUNT << endl;
    cout << "group_size     " << GROUP_SIZE << endl;
    cout << "runs           " << RUN_COUNT << endl;
    cout << "use_ram        " << (USE_RAM ? "yes" : "no") << endl;
@@ -484,7 +490,7 @@ int main(int argc, char **argv)
       return -1;
    }
 
-   // Setup indexes for inserts
+   // Setup indexes for lookups
    vector<Operation> operations;
    operations.reserve(LOOKUP_COUNT);
    uint64_t nodes_per_group = (NODE_COUNT / GROUP_SIZE);

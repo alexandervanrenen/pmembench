@@ -218,9 +218,9 @@ struct Node {
 
    Entry entries[CAPACITY]; // 512 byte (SUM = 576 byte = 9 cls)
 
-   void Initialize()
+   void Initialize(uint32_t free_bits)
    {
-      free_bits = ~0; // Everything is free
+      free_bits = free_bits; // ~ random slots are free
       memset(fingerprints, 0, CAPACITY * sizeof(uint8_t));
       padding_and_soon_a_lock = {0};
       memset(entries, 0, CAPACITY * sizeof(Entry));
@@ -560,8 +560,8 @@ void Validate(const vector<uint32_t> &operations, const T &foo)
    Node *normal_nodes = CreateNodes(0);
    Node *coro_nodes = CreateNodes(0);
    for (uint32_t i = 0; i<NODE_COUNT; i++) {
-      normal_nodes[i].Initialize();
-      coro_nodes[i].Initialize();
+      normal_nodes[i].Initialize(i);
+      coro_nodes[i].Initialize(i);
    }
 
    // Execute normal and whatever else
@@ -585,7 +585,7 @@ void DoExperiment(Node *nodes, const vector<uint32_t> &operations, const string 
 {
    // Initialize nodes
    for (uint32_t i = 0; i<NODE_COUNT; i++) {
-      nodes[i].Initialize();
+      nodes[i].Initialize(i);
    }
 
    auto from = chrono::high_resolution_clock::now();
