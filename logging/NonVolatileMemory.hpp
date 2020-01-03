@@ -32,8 +32,6 @@ private:
    bool is_nvm;
    bool is_mapped_file;
    int file_fd;
-
-   void *pmem_map_file(const char *file, size_t len, int flags, mode_t mode, size_t *acq, int *is_pmem, int *file_fd);
 };
 // -------------------------------------------------------------------------------------
 NonVolatileMemory::NonVolatileMemory(ub8 byte_count)
