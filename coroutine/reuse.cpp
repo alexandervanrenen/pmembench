@@ -211,12 +211,12 @@ struct Node {
       uint64_t value;
    };
 
-   uint32_t free_bits;
-   uint8_t fingerprints[CAPACITY];
+   uint32_t free_bits; // 4 byte (SUM = 4 byte)
+   uint8_t fingerprints[CAPACITY]; // 32 byte (SUM = 36 byte)
 
-   array<uint8_t, 6> padding_and_soon_a_lock;
+   array<uint8_t, 28> padding_and_soon_a_lock; // 28 byte (SUM = 64 byte)
 
-   Entry entries[CAPACITY];
+   Entry entries[CAPACITY]; // 512 byte (SUM = 576 byte = 9 cls)
 
    void Initialize()
    {
@@ -225,6 +225,7 @@ struct Node {
       padding_and_soon_a_lock = {0};
       memset(entries, 0, CAPACITY * sizeof(Entry));
 
+      assert(((uint64_t) this) % 64 == 0); // Ensure that free_bits and fingerprints are on the same cache line
       assert(((uint64_t) &entries[0].key) % 16 == 0); // Ensure that key and value are always on the same cache line
    }
 
@@ -251,7 +252,7 @@ struct Node {
       return true;
    }
 };
-static_assert(sizeof(Node) == 560); // Just to check if I summed up correctly
+static_assert(sizeof(Node) == 576); // Just to check if I summed up correctly
 // -------------------------------------------------------------------------------------
 uint8_t FingerprintHash(uint64_t key)
 {
@@ -306,7 +307,7 @@ void DoInsertsNormal(Node *nodes, const vector<uint32_t> &operations)
 Task<int> Node_InsertCoroFull(Node *node, uint64_t key, uint64_t value, Scheduler &scheduler)
 {
    // 1. Prefetch slots
-   _mm_prefetch(&node->free_bits, _MM_HINT_T1);
+   _mm_prefetch(&node->free_bits, _MM_HINT_T0);
    //@formatter:off
    co_await scheduler.schedule();
    //@formatter:on
@@ -319,7 +320,7 @@ Task<int> Node_InsertCoroFull(Node *node, uint64_t key, uint64_t value, Schedule
    }
 
    // 2. Prefetch key/value
-   _mm_prefetch(&node->entries[slot], _MM_HINT_T1);
+   _mm_prefetch(&node->entries[slot], _MM_HINT_T0);
    //@formatter:off
    co_await scheduler.schedule();
    //@formatter:on
@@ -370,6 +371,7 @@ void DoInsertsCoroFull(Node *nodes, const vector<uint32_t> &operations)
 
       // 4. task: set valid
       for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         assert(!groups[g].coroutine_handle.done());
          groups[g].coroutine_handle.resume();
          assert(groups[g].coroutine_handle.done());
       }
@@ -388,7 +390,7 @@ void DoInsertsCoroFull(Node *nodes, const vector<uint32_t> &operations)
 Task<int> Node_InsertCoroRead(Node *node, uint64_t key, uint64_t value, Scheduler &scheduler)
 {
    // 1. Prefetch slots
-   _mm_prefetch(&node->free_bits, _MM_HINT_T1);
+   _mm_prefetch(&node->free_bits, _MM_HINT_T0);
    //@formatter:off
    co_await scheduler.schedule();
    //@formatter:on
@@ -401,7 +403,7 @@ Task<int> Node_InsertCoroRead(Node *node, uint64_t key, uint64_t value, Schedule
    }
 
    // 2. Prefetch key/value
-   _mm_prefetch(&node->entries[slot], _MM_HINT_T1);
+   _mm_prefetch(&node->entries[slot], _MM_HINT_T0);
    //@formatter:off
    co_await scheduler.schedule();
    //@formatter:on
@@ -446,6 +448,7 @@ void DoInsertsCoroRead(Node *nodes, const vector<uint32_t> &operations)
 
       // 3. task: set valid
       for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         assert(!groups[g].coroutine_handle.done());
          groups[g].coroutine_handle.resume();
          assert(groups[g].coroutine_handle.done());
       }
@@ -462,24 +465,12 @@ void DoInsertsCoroRead(Node *nodes, const vector<uint32_t> &operations)
 // -------------------------------------------------------------------------------------
 Task<int> Node_InsertCoroWrite(Node *node, uint64_t key, uint64_t value, Scheduler &scheduler)
 {
-   // 1. Prefetch slots
-   _mm_prefetch(&node->free_bits, _MM_HINT_T1);
-   //@formatter:off
-   co_await scheduler.schedule();
-   //@formatter:on
-
    // Figure out slot to put key / value
    uint32_t slot = Node_GetFirstFreeSlot(node);
    if (slot == 32) {
       node->free_bits = 0; // Simply reset node when full
       slot = 0;
    }
-
-   // 2. Prefetch key/value
-   _mm_prefetch(&node->entries[slot], _MM_HINT_T1);
-   //@formatter:off
-   co_await scheduler.schedule();
-   //@formatter:on
 
    // Add new entry and persist
    node->entries[slot].key = key;
@@ -508,25 +499,16 @@ void DoInsertsCoroWrite(Node *nodes, const vector<uint32_t> &operations)
    vector<Task<int>> groups;
    uint32_t i = 0;
    for (; i + GROUP_SIZE - 1<INSERT_COUNT; i += GROUP_SIZE) {
-      // 1. task: fetch node
+      // 1. task: persist key/value/fingerprint
       for (uint32_t g = 0; g<GROUP_SIZE; g++) {
          uint32_t node_id = operations[i + g];
          groups.emplace_back(Node_InsertCoroWrite(&nodes[node_id], i + g, i + g, scheduler));
       }
-
-      // 2. task: fetch key/value
-      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
-         groups[g].coroutine_handle.resume();
-      }
-
-      // 3. task: persist key/value/fingerprint
-      for (uint32_t g = 0; g<GROUP_SIZE; g++) {
-         groups[g].coroutine_handle.resume();
-      }
       SFence();
 
-      // 4. task: set valid
+      // 2. task: set valid
       for (uint32_t g = 0; g<GROUP_SIZE; g++) {
+         assert(!groups[g].coroutine_handle.done());
          groups[g].coroutine_handle.resume();
          assert(groups[g].coroutine_handle.done());
       }
@@ -594,8 +576,6 @@ void Validate(const vector<uint32_t> &operations, const T &foo)
    }
    assert(memcmp(coro_nodes, normal_nodes, NODE_COUNT * sizeof(Node)) == 0);
    cout << "Validation: OK!" << endl;
-   cout << "exiting .. run with NDEBUG to do the benchmark" << endl; // Might be a good idea to not run benchmark AND validation, to save time and I do not free nodes .. ;)
-   exit(0);
 #endif
 }
 // -------------------------------------------------------------------------------------
@@ -622,6 +602,7 @@ void DoExperiment(Node *nodes, const vector<uint32_t> &operations, const string 
         << " runs: " << RUN_COUNT
         << " group_size: " << GROUP_SIZE
         << " coro_style: " << coro_style
+        << " use_ram: " << (USE_RAM ? "yes" : "no")
         << " byte_count(GB): " << (NODE_COUNT * sizeof(Node)) / 1000000 / 1000.0f
         << " path: " << PATH
         << " inserts/s: " << inserts_per_second
@@ -669,7 +650,11 @@ int main(int argc, char **argv)
    }
 
    // For testing if it works !!
+   //   Validate(operations, DoInsertsNormal);
    //   Validate(operations, DoInsertsCoroRead);
+   //   Validate(operations, DoInsertsCoroWrite);
+   //   Validate(operations, DoInsertsCoroFull);
+   //   exit(0);
 
    // Perform experiment
    Node *nodes = CreateNodes(0);
