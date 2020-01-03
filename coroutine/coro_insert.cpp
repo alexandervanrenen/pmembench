@@ -225,7 +225,7 @@ struct Node {
       padding_and_soon_a_lock = {0};
       memset(entries, 0, CAPACITY * sizeof(Entry));
 
-      for(auto& entry : entries) {
+      for (auto &entry : entries) {
          entry.key = 1;
          entry.value = 1;
       }
@@ -282,7 +282,7 @@ void Node_Insert_Normal(Node *node, uint64_t key, uint64_t value)
 
    // Full ? -> reset
    if (slot == 32) {
-      node->free_bits = 0;
+      node->free_bits = ~0; // Simply reset node when full
       slot = 0;
    }
 
@@ -320,7 +320,7 @@ Task<int> Node_InsertCoroFull(Node *node, uint64_t key, uint64_t value, Schedule
    // Figure out slot to put key / value
    uint32_t slot = Node_GetFirstFreeSlot(node);
    if (slot == 32) {
-      node->free_bits = 0; // Simply reset node when full
+      node->free_bits = ~0; // Simply reset node when full
       slot = 0;
    }
 
@@ -403,7 +403,7 @@ Task<int> Node_InsertCoroRead(Node *node, uint64_t key, uint64_t value, Schedule
    // Figure out slot to put key / value
    uint32_t slot = Node_GetFirstFreeSlot(node);
    if (slot == 32) {
-      node->free_bits = 0; // Simply reset node when full
+      node->free_bits = ~0; // Simply reset node when full
       slot = 0;
    }
 
@@ -473,7 +473,7 @@ Task<int> Node_InsertCoroWrite(Node *node, uint64_t key, uint64_t value, Schedul
    // Figure out slot to put key / value
    uint32_t slot = Node_GetFirstFreeSlot(node);
    if (slot == 32) {
-      node->free_bits = 0; // Simply reset node when full
+      node->free_bits = ~0; // Simply reset node when full
       slot = 0;
    }
 
@@ -652,11 +652,10 @@ int main(int argc, char **argv)
    }
 
    // For testing if it works !!
-   //   Validate(operations, DoInsertsNormal);
-   //   Validate(operations, DoInsertsCoroRead);
-   //   Validate(operations, DoInsertsCoroWrite);
-   //   Validate(operations, DoInsertsCoroFull);
-   //   exit(0);
+   Validate(operations, DoInsertsNormal);
+   Validate(operations, DoInsertsCoroRead);
+   Validate(operations, DoInsertsCoroWrite);
+   Validate(operations, DoInsertsCoroFull);
 
    // Perform experiment
    Node *nodes = CreateNodes(0);
