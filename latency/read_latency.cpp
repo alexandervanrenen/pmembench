@@ -106,7 +106,7 @@ uint64_t *CreateRandomCycle(bool ram)
       auto start = chrono::high_resolution_clock::now();
       cout << "init " << flush;
       helper = new uint64_t[COUNT];
-      for (uint64_t i = 0; i<COUNT; i++) {
+      for (uint64_t i = 0; i<COUNT;) {
          uint64_t limit = min(i + COUNT / 10, COUNT);
          for (; i<limit; i++) {
             helper[i] = i;
@@ -122,7 +122,7 @@ uint64_t *CreateRandomCycle(bool ram)
       auto start = chrono::high_resolution_clock::now();
       cout << "shuffle " << flush;
       FastRandom ranny;
-      for (uint64_t i = 0; i<COUNT; i++) {
+      for (uint64_t i = 0; i<COUNT;) {
          uint64_t limit = min(i + COUNT / 10, COUNT);
          for (; i<limit; i++) {
             uint64_t pos = (ranny.Next() % (COUNT - i)) + i;
@@ -149,7 +149,7 @@ uint64_t *CreateRandomCycle(bool ram)
          }
          result = (uint64_t *) mmap(nullptr, COUNT * 8, PROT_WRITE, MAP_SHARED, fd, 0);
       }
-      for (uint64_t i = 0; i<COUNT; i++) {
+      for (uint64_t i = 0; i<COUNT;) {
          uint64_t limit = min(i + COUNT / 10, COUNT);
          for (; i<limit; i++) {
             result[helper[i]] = helper[(i + 1) % COUNT];
