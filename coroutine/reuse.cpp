@@ -225,6 +225,11 @@ struct Node {
       padding_and_soon_a_lock = {0};
       memset(entries, 0, CAPACITY * sizeof(Entry));
 
+      for(auto& entry : entries) {
+         entry.key = 1;
+         entry.value = 1;
+      }
+
       assert(((uint64_t) this) % 64 == 0); // Ensure that free_bits and fingerprints are on the same cache line
       assert(((uint64_t) &entries[0].key) % 16 == 0); // Ensure that key and value are always on the same cache line
    }
@@ -627,6 +632,7 @@ int main(int argc, char **argv)
    cout << "node_count     " << NODE_COUNT << endl;
    cout << "insert_count   " << INSERT_COUNT << endl;
    cout << "group_size     " << GROUP_SIZE << endl;
+   cout << "runs           " << RUN_COUNT << endl;
    cout << "use_ram        " << (USE_RAM ? "yes" : "no") << endl;
    cout << "path           " << PATH << endl;
    cout << "------" << endl;
