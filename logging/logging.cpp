@@ -8,6 +8,7 @@
 #include <vector>
 #include <functional>
 #include <chrono>
+#include <memory>
 
 using namespace std;
 
@@ -27,6 +28,7 @@ const static ub8 GIGA = 1024 * 1024 * 1024;
 #include "LW_ZeroAligned.hpp"
 #include "LW_ZeroBlocked.hpp"
 #include "LW_ZeroSimd.hpp"
+#include "LW_Mnemosyne.hpp"
 
 namespace {
 
@@ -58,13 +60,12 @@ ub4 RUNS;
 string NVM_FILE;
 bool TABLE_VIEW;
 
-void PrintResult(string name, ub4 entry_size, double ns_per_entry)
+void PrintResult(string name, ub4 entry_size, double ns_per_entry, uint64_t written_byte_count)
 {
    //@formatter:off
    cout << "res:";
    cout << " technique: " << name;
-   cout << " min_log_entry_size: " << MIN_LOG_ENTRY_SIZE;
-   cout << " max_log_entry_size: " << MAX_LOG_ENTRY_SIZE;
+   cout << " written_byte_count(byte): " << written_byte_count;
    cout << " log_payload_size(MB): " << LOG_PAYLOAD_SIZE / 1000 / 1000;
    cout << " runs: " << RUNS;
    cout << " entry_size: " << entry_size;
@@ -108,7 +109,7 @@ int main(int argc, char **argv)
    cout << "------" << endl;
 
    if (TABLE_VIEW) {
-      printf("%-20s%20s%20s%20s%20s%20s%20s%20s%20s%20s%20s%20s%20s\n", "entry_size", "libPmem", "classic", "classicCached", "classicAligned", "header", "headerAligned", "headerDanc", "headerAligDanc", "zero", "zeroAligned", "zeroBlocked", "zeroSimd");
+      printf("%-20s%20s%20s%20s%20s%20s%20s%20s%20s%20s%20s%20s%20s%20s\n", "entry_size", "libPmem", "classic", "classicCached", "classicAligned", "header", "headerAligned", "headerDanc", "headerAligDanc", "zero", "zeroAligned", "zeroBlocked", "zeroSimd", "Mnemosyne");
    }
 
    vector<ub1> memory = RandomizedMemory(NVM_SIZE, ranny);
@@ -132,7 +133,7 @@ int main(int argc, char **argv)
       //            printf("%20f", ns_spend * 1.0 / entries.size());
       //            fflush(stdout);
       //         } else {
-      //            PrintResult("libPmem", entry_size, ns_spend * 1.0 / entries.size());
+      //            PrintResult("libPmem", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
       //         }
       //      }
 
@@ -149,7 +150,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("classic", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("classic", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -166,7 +167,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("classicCached", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("classicCached", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -183,7 +184,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("classicAligned", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("classicAligned", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -200,7 +201,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("header", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("header", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -217,7 +218,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("headerAligned", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("headerAligned", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -234,7 +235,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("headerDanc", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("headerDanc", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -251,7 +252,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("headerAligDanc", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("headerAligDanc", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -268,7 +269,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("zero", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("zero", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -285,7 +286,7 @@ int main(int argc, char **argv)
       //            printf("%20f", ns_spend * 1.0 / entries.size());
       //            fflush(stdout);
       //         } else {
-      //            PrintResult("zeroAligned", entry_size, ns_spend * 1.0 / entries.size());
+      //            PrintResult("zeroAligned", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
       //         }
       //      }
 
@@ -302,7 +303,7 @@ int main(int argc, char **argv)
             printf("%20f", ns_spend * 1.0 / entries.size());
             fflush(stdout);
          } else {
-            PrintResult("zeroBlocked", entry_size, ns_spend * 1.0 / entries.size());
+            PrintResult("zeroBlocked", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
       }
 
@@ -319,12 +320,44 @@ int main(int argc, char **argv)
       //            printf("%20f", ns_spend * 1.0 / entries.size());
       //            fflush(stdout);
       //         } else {
-      //            PrintResult("zeroSimd", entry_size, ns_spend * 1.0 / entries.size());
+      //            PrintResult("zeroSimd", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
       //         }
       //      }
-      //      if (TABLE_VIEW) {
-      //         printf("\n");
-      //      }
+
+      // Mnemosyne
+      {
+         LogWriterMnemosyne wal(nvm);
+         vector<LogWriterMnemosyne::Entry *> entries = LogWriterMnemosyne::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+         cout << "entry_count: " << entries.size() << endl;
+         ub8 ns_spend = RunWithTiming([&]() {
+            for (LogWriterMnemosyne::Entry *entry : entries) {
+               wal.AddLogEntry(*entry);
+            }
+         });
+         if (TABLE_VIEW) {
+            printf("%20f", ns_spend * 1.0 / entries.size());
+            fflush(stdout);
+         } else {
+            PrintResult("mnemosyne", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
+         }
+
+         // Validation code
+         //         for (LogWriterMnemosyne::Entry *entry : entries) {
+         //            auto entry2 = wal.GetNextLogEntry();
+         //            if (entry->payload_size != entry2->payload_size) {
+         //               cout << "length missmatch !!" << endl;
+         //               throw;
+         //            }
+         //            if (memcmp(entry->data, entry2->data, entry->payload_size) != 0) {
+         //               cout << "data missmatch !!" << endl;
+         //               throw;
+         //            }
+         //         }
+      }
+
+      if (TABLE_VIEW) {
+         printf("\n");
+      }
    }
 
    return 0;
