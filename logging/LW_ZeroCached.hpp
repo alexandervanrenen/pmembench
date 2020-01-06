@@ -41,7 +41,9 @@ struct LogWriterZeroCached {
    ub8 AddLogEntry(const Entry &entry)
    {
       ub4 size = entry.payload_size + 8;
+      ub4 blks = size / 8;
 
+      assert(size >= 64);
       assert(next_free % 8 == 0);
       assert(entry.payload_size % 8 == 0);
       assert(next_free + size<nvm.GetByteCount());
@@ -50,8 +52,9 @@ struct LogWriterZeroCached {
       const ub8 *ram_begin = reinterpret_cast<const ub8 *>(&entry);
       ub1 *nvm_begin = reinterpret_cast<ub1 *>(file.data + (next_free & ~63ull));
 
-      // Copy all 8-byte-blocks of log-entry via cl-buffer to nvm
-      for (ub4 pos = 0; pos<size / 8; pos++) {
+      // Head
+      ub4 pos = 0;
+      for (; pos<blks && cl_pos != 0; pos++) {
          active_cl[cl_pos] = ram_begin[pos];
          pop_cnt += alex_PopCount(ram_begin[pos]);
          cl_pos++;
@@ -62,6 +65,45 @@ struct LogWriterZeroCached {
             cl_pos = 0;
             nvm_begin += 64;
          }
+      }
+
+      // Copy all 8-byte-blocks of log-entry via cl-buffer to nvm
+      for (; pos + 7<blks; pos += 8) {
+         active_cl[0] = ram_begin[pos + 0];
+         pop_cnt += alex_PopCount(ram_begin[pos + 0]);
+
+         active_cl[1] = ram_begin[pos + 1];
+         pop_cnt += alex_PopCount(ram_begin[pos + 1]);
+
+         active_cl[2] = ram_begin[pos + 2];
+         pop_cnt += alex_PopCount(ram_begin[pos + 2]);
+
+         active_cl[3] = ram_begin[pos + 3];
+         pop_cnt += alex_PopCount(ram_begin[pos + 3]);
+
+         active_cl[4] = ram_begin[pos + 4];
+         pop_cnt += alex_PopCount(ram_begin[pos + 4]);
+
+         active_cl[5] = ram_begin[pos + 5];
+         pop_cnt += alex_PopCount(ram_begin[pos + 5]);
+
+         active_cl[6] = ram_begin[pos + 6];
+         pop_cnt += alex_PopCount(ram_begin[pos + 6]);
+
+         active_cl[7] = ram_begin[pos + 7];
+         pop_cnt += alex_PopCount(ram_begin[pos + 7]);
+
+         alex_FlushClToNvm(nvm_begin, (ub1 *) active_cl);
+         memset((ub1 *) active_cl, 0, 64);
+         cl_pos = 0;
+         nvm_begin += 64;
+      }
+
+      // Tail
+      for (; pos<blks; pos++) {
+         active_cl[cl_pos] = ram_begin[pos];
+         pop_cnt += alex_PopCount(ram_begin[pos]);
+         cl_pos++;
       }
 
       //      cout << "writing pop_cnt to " << (ub8(nvm_begin) - ub8(file.data)) + cl_pos << endl;
@@ -88,7 +130,7 @@ struct LogWriterZeroCached {
       }
 
       // Read length
-      ub8 len = *(ub8*)&file.data[log_read_offset];
+      ub8 len = *(ub8 *) &file.data[log_read_offset];
       log_read_offset += 8;
       ub8 pop_cnt = 0;
       pop_cnt += alex_PopCount(len);

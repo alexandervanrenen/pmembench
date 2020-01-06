@@ -28,6 +28,7 @@ const static ub8 GIGA = 1024 * 1024 * 1024;
 #include "LW_ZeroAligned.hpp"
 #include "LW_ZeroBlocked.hpp"
 #include "LW_ZeroSimd.hpp"
+#include "LW_ZeroCached.hpp"
 #include "LW_Mnemosyne.hpp"
 
 namespace {
@@ -74,7 +75,7 @@ void PrintResult(string name, ub4 entry_size, double ns_per_entry, uint64_t writ
    //@formatter:on
 }
 
-// clang++ -g0 -O3 -DNEDBUG=1 -march=native -std=c++17 logging/logging.cpp -Invml/src/include/ nvml/src/nondebug/libpmem.a nvml/src/nondebug/libpmemlog.a -lpthread -lndctl -ldaxctl && ./a.out 128 128 1000000000 3 /mnt/pmem0/renen/file_0 0
+// clang++ -g0 -O3 -DNDEBUG=1 -march=native -std=c++17 logging/logging.cpp -Invml/src/include/ nvml/src/nondebug/libpmem.a nvml/src/nondebug/libpmemlog.a -lpthread -lndctl -ldaxctl && ./a.out 128 128 1000000000 3 /mnt/pmem0/renen/file_0 0
 int main(int argc, char **argv)
 {
    Random ranny;
@@ -105,6 +106,11 @@ int main(int argc, char **argv)
    cout << "nvm_size            " << NVM_SIZE / 1000 / 1000 << "MB" << endl;
    cout << "runs                " << RUNS << endl;
    cout << "nvm_file            " << NVM_FILE << endl;
+#ifndef NDEBUG
+   cout << "NDEBUG              " << "debug" << endl;
+#else
+   cout << "NDEBUG              " << "release" << endl;
+#endif
    cout << "nvm                 " << (nvm.IsNvm() ? "yes" : "no") << endl;
    cout << "------" << endl;
 
@@ -323,6 +329,36 @@ int main(int argc, char **argv)
       //            PrintResult("zeroSimd", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
       //         }
       //      }
+
+      // Zero cached
+      {
+         LogWriterZeroCached wal(nvm);
+         vector<LogWriterZeroCached::Entry *> entries = LogWriterZeroCached::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+         ub8 ns_spend = RunWithTiming([&]() {
+            for (LogWriterZeroCached::Entry *entry : entries) {
+               wal.AddLogEntry(*entry);
+            }
+         });
+         if (TABLE_VIEW) {
+            printf("%20f", ns_spend * 1.0 / entries.size());
+            fflush(stdout);
+         } else {
+            PrintResult("zeroCached", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
+         }
+
+         // Validation code
+         //         for (LogWriterZeroCached::Entry *entry : entries) {
+         //            auto entry2 = wal.GetNextLogEntry();
+         //            if (entry->payload_size != entry2->payload_size) {
+         //               cout << "length missmatch !! " << entry->payload_size << " vs " << entry2->payload_size << endl;
+         //               throw;
+         //            }
+         //            if (memcmp(entry->data, entry2->data, entry->payload_size) != 0) {
+         //               cout << "data missmatch !!" << endl;
+         //               throw;
+         //            }
+         //         }
+      }
 
       // Mnemosyne
       {

@@ -62,6 +62,11 @@ struct LogWriterHeaderAlignedDancing {
       return next_free;
    }
 
+   ub8 GetWrittenByteCount() const
+   {
+      return next_free + sizeof(File);
+   }
+
    static vector<Entry *> CreateRandomEntries(vector <ub1> &memory, ub4 min_size, ub4 max_size, ub8 log_payload_size, Random &ranny)
    {
       ub8 current = 0;
