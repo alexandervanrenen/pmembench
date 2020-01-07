@@ -1,24 +1,11 @@
-#include "Random.hpp"
+#pragma once
+// -------------------------------------------------------------------------------------
+#include "Common.hpp"
+#include "NonVolatileMemory.hpp"
 #include <iostream>
 #include <vector>
 #include <string>
 #include <array>
-// -------------------------------------------------------------------------------------
-using namespace std;
-// -------------------------------------------------------------------------------------
-template<class TARGET, class SOURCE>
-inline TARGET Cast(SOURCE *ptr) { return reinterpret_cast<TARGET>(ptr); }
-// -------------------------------------------------------------------------------------
-void DumpHex(const void *data_in, uint32_t size, ostream &os)
-{
-   char buffer[16];
-
-   const char *data = reinterpret_cast<const char *>(data_in);
-   for (uint32_t i = 0; i<size; i++) {
-      sprintf(buffer, "%02hhx", data[i]);
-      os << buffer[0] << buffer[1] << " ";
-   }
-}
 // -------------------------------------------------------------------------------------
 struct Block {
    uint64_t data;
@@ -45,7 +32,7 @@ struct Block {
       return GetNewStateNoCheck();
    }
 
-   friend ostream &operator<<(ostream &os, const Block &b)
+   friend std::ostream &operator<<(std::ostream &os, const Block &b)
    {
       uint32_t version = b.GetVersionNoCheck();
       uint32_t old_state = b.GetOldStateNoCheck();
@@ -75,12 +62,12 @@ struct InplaceField {
    static const uint32_t BLOCK_COUNT = (BIT_COUNT + 30) / 31;
    static_assert(BYTE_COUNT>8, "Use normal uint64_t.");
 
-   array<Block, BLOCK_COUNT> blocks;
+   std::array<Block, BLOCK_COUNT> blocks;
 
-   void Print()
+   void Print(std::ostream &out)
    {
       for (auto &block : blocks) {
-         cout << block << endl;
+         out << block << std::endl;
       }
    }
 
@@ -149,25 +136,13 @@ struct InplaceField {
    }
 };
 // -------------------------------------------------------------------------------------
-char *CreateAlignedString(Random &ranny, uint32_t len)
-{
-   char *data = (char *) malloc(len);
-   assert((uint64_t) data % 4 == 0);
-
-   for (uint32_t i = 0; i<len; i++) {
-      data[i] = ranny.Rand() % 256;
-   }
-
-   return data;
-}
-// -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
-void Test()
+void TestInPlaceUpdates()
 {
    Random ranny;
    InplaceField<BYTE_COUNT> field;
 
-   for (uint32_t i = 0; i<100000; i++) {
+   for (uint32_t i = 0; i<10000; i++) {
       field.Reset();
       char *input = CreateAlignedString(ranny, BYTE_COUNT);
       field.WriteNoCheck(input);
@@ -175,11 +150,11 @@ void Test()
 
       for (uint32_t i = 0; i<BYTE_COUNT; i++) {
          if (input[i] != output[i]) {
-            cout << i << ": ";
-            DumpHex(input + i, 1, cout);
-            cout << " vs ";
-            DumpHex(output + i, 1, cout);
-            cout << endl;
+            std::cout << i << ": ";
+            DumpHex(input + i, 1, std::cout);
+            std::cout << " vs ";
+            DumpHex(output + i, 1, std::cout);
+            std::cout << std::endl;
             throw;
          }
       }
@@ -187,16 +162,44 @@ void Test()
       free(output);
       free(input);
    }
-   cout << "all good for " << BYTE_COUNT << endl;
+   std::cout << "all good for " << BYTE_COUNT << std::endl;
 }
 // -------------------------------------------------------------------------------------
-int main()
+void TestSomeInPlaceUpdateConfigurations()
 {
-   Test<16>();
-   Test<20>();
-   Test<64>();
-   Test<1000>();
-   Test<10000>();
-   Test<100000>();
+   TestInPlaceUpdates<16>();
+   TestInPlaceUpdates<20>();
+   TestInPlaceUpdates<64>();
+   TestInPlaceUpdates<1000>();
+   TestInPlaceUpdates<10000>();
 }
+// -------------------------------------------------------------------------------------
+template<uint32_t entry_size>
+struct InPlaceLikeUpdates {
+   NonVolatileMemory nvm_data;
+
+   InPlaceLikeUpdates(const std::string &path)
+           : nvm_data(path + "/data_file", sizeof(InplaceField<entry_size>))
+   {
+      std::cout << "size: " << sizeof(InplaceField<entry_size>) << std::endl;
+      std::cout << "BLOCK_COUNT: " << InplaceField<entry_size>::BLOCK_COUNT << std::endl;
+   }
+
+   void DoUpdate(char *new_data)
+   {
+      std::cout << "update to ";
+      DumpHex(new_data, entry_size, std::cout);
+      std::cout << std::endl;
+   }
+
+   std::vector<char *> PrepareUpdates(uint64_t count)
+   {
+      Random ranny;
+      std::vector<char *> results;
+      for (uint64_t i = 0; i<count; i++) {
+         results.push_back(CreateAlignedString(ranny, entry_size));
+      }
+      return results;
+   }
+};
 // -------------------------------------------------------------------------------------

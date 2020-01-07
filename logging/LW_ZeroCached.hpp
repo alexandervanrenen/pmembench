@@ -43,7 +43,6 @@ struct LogWriterZeroCached {
       ub4 size = entry.payload_size + 8;
       ub4 blks = size / 8;
 
-      assert(size >= 64);
       assert(next_free % 8 == 0);
       assert(entry.payload_size % 8 == 0);
       assert(next_free + size<nvm.GetByteCount());
