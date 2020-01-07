@@ -4,153 +4,75 @@
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
-struct Log {
-   vector<uint8_t> log;
-   uint64_t log_offset;
-   uint64_t log_read_offset;
+void DumpHex(const void *data_in, uint32_t size, ostream &os)
+{
+   char buffer[16];
 
-   Log(uint64_t size)
-           : log(size, 0)
-             , log_offset(0)
-             , log_read_offset(0)
+   const char *data = reinterpret_cast<const char *>(data_in);
+   for (uint32_t i = 0; i<size; i++) {
+      sprintf(buffer, "%02hhx", data[i]);
+      os << buffer[0] << buffer[1] << " ";
+   }
+}
+// -------------------------------------------------------------------------------------
+struct Block {
+   uint64_t data;
+
+   Block()
+           : data(0) {}
+
+   uint32_t GetVersionNoCheck() const { return data >> 62; }
+   uint32_t GetOldStateNoCheck() const { return (data >> 31) & 0x7fffffff; }
+   uint32_t GetNewStateNoCheck() const { return data & 0x7fffffff; }
+
+   void UpdateNoCheck(uint32_t new_state)
    {
-      memset((char *) &log[0], '\0', size);
+      assert((new_state & 0x80000000) == 0);
+
+      uint32_t version = (GetVersionNoCheck() + 1) & 0x3;
+      uint32_t old_state = GetNewStateNoCheck();
+
+      AssignNoCheck(version, old_state, new_state);
    }
 
-   void Write(const char *data, uint64_t len)
+   friend ostream &operator<<(ostream &os, const Block &b)
    {
-      assert(log_offset + len<log.size());
-      assert(len>0 && len % 8 == 0);
-
-      // Write length of log entry
-      uint64_t log_offset_start = log_offset;
-      *((uint64_t *) &log[log_offset]) = len | 0x1;
-      log_offset += 8;
-
-      // Write payload of log entry
-      uint64_t buffer = 0;
-      uint64_t checker = 0;
-
-      uint32_t i = 0;
-      for (i = 0; i<len; i += 8) {
-         uint64_t cur = *(const uint64_t *) &data[i];
-
-         buffer = (buffer << 1) | (cur & 0x1);
-         cur = (cur | 0x1);
-         *((uint64_t *) &log[log_offset]) = cur;
-         log_offset += 8;
-         //         cout << i << ": " << buffer << endl;
-
-         // Flush buffer every 63 8-byte blocks
-         checker++;
-         if (i>0 && (i + 8) % 504 == 0) {
-            cout << "flush checker" << endl;
-            assert(checker == 63);
-            buffer = (buffer << 1) | 0x1;
-            *((uint64_t *) &log[log_offset]) = buffer;
-            log_offset += 8;
-            checker = 0;
-            buffer = 0;
-         }
-      }
-
-      if (i % 504 != 0) {
-         assert(checker>0);
-         cout << "flush tail checker: " << buffer << " @" << log_offset << endl;
-
-         buffer = (buffer << 1) | 0x1;
-         *((uint64_t *) &log[log_offset]) = buffer;
-         log_offset += 8;
-      }
+      uint32_t version = b.GetVersionNoCheck();
+      uint32_t old_state = b.GetOldStateNoCheck();
+      uint32_t new_state = b.GetNewStateNoCheck();
+      os << "version: " << version << " old: ";
+      DumpHex(&old_state, 4, os);
+      os << " new: ";
+      DumpHex(&new_state, 4, os);
+      return os;
    }
 
-   vector<char> ReadNextEntry() // Read code is only to verify correctnes
+private:
+   void AssignNoCheck(uint64_t version, uint64_t old_state, uint64_t new_state)
    {
-      // Read length
-      uint64_t len = *((uint64_t *) &log[0]) & ~(0x1ull);
-      log_read_offset += 8;
+      assert((version & ~0x3) == 0);
+      assert((old_state & 0x80000000) == 0);
+      assert((new_state & 0x80000000) == 0);
 
-      cout << "got len: " << len << endl;
-
-      uint64_t checker = 0;
-
-      vector<char> result(len);
-      uint32_t i = 0;
-      for (; i<len; i += 8) {
-         *((uint64_t *) &result[i]) = *((uint64_t *) &log[log_read_offset]);
-         *((uint64_t *) &result[i]) &= ~(0x1ull);
-         log_read_offset += 8;
-         checker++;
-
-         if (i>0 && (i + 8) % 504 == 0) {
-            assert(checker == 63);
-            checker = 0;
-            cout << "apply checker" << endl;
-
-            uint64_t buffer = *((uint64_t *) &log[log_read_offset]) >> 1;
-            log_read_offset += 8;
-            for (uint32_t c = 0; c<63; c++) {
-               *((uint64_t *) &result[i - c * 8]) |= buffer & 0x1;
-               buffer = buffer >> 1;
-            }
-         }
-      }
-
-      if (i % 504 != 0) {
-         i -= 8;
-         assert(checker>0);
-
-         uint64_t buffer = *((uint64_t *) &log[log_read_offset]) >> 1;
-         cout << "apply tail checker " << buffer << " @" << log_read_offset << endl;
-
-         log_read_offset += 8;
-         for (uint32_t c = 0; c<checker; c++) {
-            *((uint64_t *) &result[i - c * 8]) |= buffer & 0x1;
-            buffer = buffer >> 1;
-         }
-         checker = 0;
-      }
-
-      return result;
+      data = (version << 62) | (old_state << 31) | new_state;
    }
 };
+static_assert(sizeof(Block) == 8);
 // -------------------------------------------------------------------------------------
 int main()
 {
-   Log log(1e9);
-
-   {
-      //   string test = "Whats up N York?";
-      string test = "Hello_my_world! ";
-      for (uint32_t i = 0; i<7; i++) {
-         test += test;
-      }
-      assert(test.size() == 16 * 128);
-      log.Write(test.data(), 5 * 8);
-
-      vector<char> result = log.ReadNextEntry();
-      cout << "got:" << endl;
-      for (auto iter : result) {
-         cout << iter;
-      }
-      cout << endl;
-   }
-
-   {
-      //   string test = "Whats up N York?";
-      string test = "Hello_my_world! ";
-      for (uint32_t i = 0; i<7; i++) {
-         test += test;
-      }
-      assert(test.size() == 16 * 128);
-      log.Write(test.data(), 5 * 8);
-
-      vector<char> result = log.ReadNextEntry();
-      cout << "got:" << endl;
-      for (auto iter : result) {
-         cout << iter;
-      }
-      cout << endl;
-   }
+   uint32_t c = 1;
+   Block b;
+   cout << b << endl;
+   b.UpdateNoCheck(c++);
+   cout << b << endl;
+   b.UpdateNoCheck(c++);
+   cout << b << endl;
+   b.UpdateNoCheck(c++);
+   cout << b << endl;
+   b.UpdateNoCheck(c++);
+   cout << b << endl;
+   b.UpdateNoCheck(c++);
+   cout << b << endl;
 }
 // -------------------------------------------------------------------------------------
