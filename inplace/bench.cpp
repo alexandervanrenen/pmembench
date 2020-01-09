@@ -67,22 +67,26 @@ int main(int argc, char **argv)
    cout << "nvm_path           " << NVM_PATH << endl;
    cout << "------" << endl;
 
+   // Testing / Validation code
+   //   TestSomeInPlaceUpdateConfigurations();
+
    // Run Experiments
-   //   {
-   //      InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates(NVM_PATH);
-   //      RunExperiment("inplace", inplace_updates);
-   //   }
-   {
-      LogBasedUpdates<ENTRY_SIZE> log_based(NVM_PATH, ENTRY_COUNT, 1e9);
-      RunExperiment("log", log_based);
-   }
+   InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates(NVM_PATH, ENTRY_COUNT);
+   RunExperiment("inplace", inplace_updates);
+
+   LogBasedUpdates<ENTRY_SIZE> log_based(NVM_PATH, ENTRY_COUNT, 1e9);
+   RunExperiment("log", log_based);
+
+   char *inplace_result = inplace_updates.CreateResult();
+   char *log_result = log_based.GetResult();
+
+   int res = memcmp(inplace_result, log_result, ENTRY_COUNT * ENTRY_SIZE);
+   cout << "res: " << res << endl;
+
    //   {
    //      CowBasedUpdates<ENTRY_SIZE> cow_based(NVM_PATH);
    //      RunExperiment("cow", log_based, strings);
    //   }
-
-   // Testing / Validation code
-   //   TestSomeInPlaceUpdateConfigurations();
 
    return 0;
 }

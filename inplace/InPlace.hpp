@@ -177,19 +177,26 @@ void TestSomeInPlaceUpdateConfigurations()
 template<uint32_t entry_size>
 struct InPlaceLikeUpdates {
    NonVolatileMemory nvm_data;
+   uint64_t entry_count;
+   InplaceField<entry_size> *entries;
 
-   InPlaceLikeUpdates(const std::string &path)
-           : nvm_data(path + "/data_file", sizeof(InplaceField<entry_size>))
+   InPlaceLikeUpdates(const std::string &path, uint64_t entry_count)
+           : nvm_data(path + "/inplace_data_file", sizeof(InplaceField<entry_size>) * entry_count)
+             , entry_count(entry_count)
    {
-      std::cout << "size: " << sizeof(InplaceField<entry_size>) << std::endl;
-      std::cout << "BLOCK_COUNT: " << InplaceField<entry_size>::BLOCK_COUNT << std::endl;
+      std::vector<char> data(entry_size, 'a');
+      entries = (InplaceField<entry_size> *) nvm_data.Data();
+      for (uint64_t i = 0; i<entry_count; i++) {
+         entries[i].Reset();
+         entries[i].WriteNoCheck(data.data());
+      }
    }
 
-   void DoUpdate(char *new_data)
+   void DoUpdate(uint64_t entry_id, char *new_data)
    {
-      std::cout << "update to ";
-      DumpHex(new_data, entry_size, std::cout);
-      std::cout << std::endl;
+      entries[entry_id].WriteNoCheck(new_data);
+      alex_WriteBack(entries + entry_id);
+      alex_SFence();
    }
 
    std::vector<char *> PrepareUpdates(uint64_t count)
@@ -200,6 +207,17 @@ struct InPlaceLikeUpdates {
          results.push_back(CreateAlignedString(ranny, entry_size));
       }
       return results;
+   }
+
+   char *CreateResult()
+   {
+      char *result = (char *) malloc(entry_size * entry_count);
+      for (uint64_t i = 0; i<entry_count; i++) {
+         char *entry_as_string = entries[i].ReadNoCheck();
+         memcpy(result + i * entry_size, entry_as_string, entry_size);
+         free(entry_as_string);
+      }
+      return result;
    }
 };
 // -------------------------------------------------------------------------------------

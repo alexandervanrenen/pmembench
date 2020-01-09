@@ -176,8 +176,8 @@ struct LogBasedUpdates {
    uint64_t entry_count;
 
    LogBasedUpdates(const std::string &path, uint64_t entry_count, uint64_t log_buffer_size)
-           : nvm_log(path + "/log_file", log_buffer_size)
-             , nvm_data(path + "/data_file", entry_count * entry_size)
+           : nvm_log(path + "/log_log_file", log_buffer_size)
+             , nvm_data(path + "/log_data_file", entry_count * entry_size)
              , log_writer(nvm_log)
              , entry(new(malloc(sizeof(LogWriterZeroCached::Entry) + entry_size)) LogWriterZeroCached::Entry())
              , entry_count(entry_count)
@@ -199,6 +199,7 @@ struct LogBasedUpdates {
 
       ub1 *entry_begin = nvm_data.Data() + (entry_id * entry_size);
       alex_FastCopyAndWriteBack(entry_begin, new_data->data, entry_size);
+      alex_SFence();
    }
 
    std::vector<LogWriterZeroCached::Entry *> PrepareUpdates(uint64_t count)
@@ -215,6 +216,11 @@ struct LogBasedUpdates {
       }
 
       return results;
+   }
+
+   char *GetResult()
+   {
+      return (char *) nvm_data.Data();
    }
 };
 // -------------------------------------------------------------------------------------
