@@ -14,12 +14,10 @@
 using namespace std;
 
 // Config
-ub4 PAGE_COUNT; // How many pages to use
 ub4 DIRTY_CL_COUNT; // How many cache lines are dirty
 string NVM_FILE; // Path to the nvm file
 ub4 THREAD_COUNT; // How many threads -> 0 runs single threaded config
-ub4 RUN_COUNT; // How often should the workload be run (only for MT)
-ub4 PAGE_COUNT_PER_THREAD;
+ub4 PAGE_COUNT_PER_THREAD; // How many pages to use
 
 ub8 RunWithTiming(function<void()> foo)
 {
@@ -253,13 +251,11 @@ void RunBenchmarkThreaded(string tech, bool all_resident, function<void(FlushTes
    for (ub4 tid = 0; tid<THREAD_COUNT; tid++) {
       threads.push_back(make_unique<thread>([&, tid]() {
          FlushTest ft(NVM_FILE + string("_") + to_string(tid), PAGE_COUNT_PER_THREAD);
+         ft.InitializePages();
+         ft.MakeRandomCacheLinesDirty(DIRTY_CL_COUNT, all_resident);
          ready_count++;
          while (!start_barrier);
-         for (ub4 run = 0; run<RUN_COUNT; run++) {
-            ft.InitializePages();
-            ft.MakeRandomCacheLinesDirty(DIRTY_CL_COUNT, all_resident);
-            times[tid] += RunWithTiming([&]() { callback(ft); });
-         }
+         times[tid] += RunWithTiming([&]() { callback(ft); });
          ft.CheckNvmContentEqualsTo('a');
       }));
    }
@@ -274,7 +270,7 @@ void RunBenchmarkThreaded(string tech, bool all_resident, function<void(FlushTes
       time_sum_of_all_threads += times[tid];
    }
    double avg_time_per_thread = time_sum_of_all_threads * 1.0 / THREAD_COUNT;
-   ub8 total_page_count = PAGE_COUNT * RUN_COUNT;
+   ub8 total_page_count = PAGE_COUNT_PER_THREAD * THREAD_COUNT;
    ub8 byte_count = total_page_count * DIRTY_CL_COUNT * constants::kCacheLineByteCount;
    double page_per_second = (total_page_count * 1000000000) / (avg_time_per_thread);
 
@@ -283,7 +279,7 @@ void RunBenchmarkThreaded(string tech, bool all_resident, function<void(FlushTes
         << " tech= " << tech
         << " dirty_cl_count= " << DIRTY_CL_COUNT
         << " thread_count= " << THREAD_COUNT
-        << " page_count= " << PAGE_COUNT
+        << " page_count_per_thread= " << PAGE_COUNT_PER_THREAD
         << " avg_time= " << avg_time_per_thread
         << " perf(GB/s)= " << (byte_count / avg_time_per_thread)
         << " perf(pages/s)= " << page_per_second
@@ -317,17 +313,15 @@ void RunMultiThreaded()
 // clang++ -DSTREAMING=1 page_flush/page_flush.cpp -std=c++17 -Invml/src/include/ nvml/src/nondebug/libpmem.a nvml/src/nondebug/libpmemblk.a -g0 -O3 -march=native -lpthread -lndctl -ldaxctl
 int main(int argc, char **argv)
 {
-   if (argc != 6) {
-      cout << "usage: " << argv[0] << " page_count dirty_cl_count thread_count run_count path" << endl;
+   if (argc != 5) {
+      cout << "usage: " << argv[0] << " page_count_per_thread dirty_cl_count thread_count path" << endl;
       throw;
    }
 
-   PAGE_COUNT = atof(argv[1]);
+   PAGE_COUNT_PER_THREAD = atof(argv[1]);
    DIRTY_CL_COUNT = atof(argv[2]);
    THREAD_COUNT = atof(argv[3]);
-   RUN_COUNT = atof(argv[4]);
-   NVM_FILE = argv[5];
-   PAGE_COUNT_PER_THREAD = PAGE_COUNT / THREAD_COUNT;
+   NVM_FILE = argv[4];
 
    if (DIRTY_CL_COUNT == 0 && DIRTY_CL_COUNT>constants::kCacheLinesPerPage) {
       cout << "invalid DIRTY_CL_COUNT " << DIRTY_CL_COUNT << endl;
@@ -336,15 +330,14 @@ int main(int argc, char **argv)
 
    cerr << "Config:" << endl;
    cerr << "----------------------------" << endl;
-   cerr << "PAGE_COUNT:     " << PAGE_COUNT << endl;
-   cerr << "DIRTY_CL_COUNT: " << DIRTY_CL_COUNT << endl;
-   cerr << "THREAD_COUNT:   " << THREAD_COUNT << endl;
-   cerr << "RUN_COUNT:      " << RUN_COUNT << endl;
-   cerr << "NVM_FILE:       " << NVM_FILE << endl;
+   cerr << "PAGE_COUNT_PER_THREAD: " << PAGE_COUNT_PER_THREAD << endl;
+   cerr << "DIRTY_CL_COUNT:        " << DIRTY_CL_COUNT << endl;
+   cerr << "THREAD_COUNT:          " << THREAD_COUNT << endl;
+   cerr << "NVM_FILE:              " << NVM_FILE << endl;
 #ifdef STREAMING
-   cerr << "STREAMING:      " << "yes" << endl;
+   cerr << "STREAMING:             " << "yes" << endl;
 #else
-   cerr << "STREAMING:      " << "no" << endl;
+   cerr << "STREAMING:             " << "no" << endl;
 #endif
 
    RunMultiThreaded();
