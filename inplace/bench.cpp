@@ -71,7 +71,7 @@ int main(int argc, char **argv)
    cout << "nvm_path           " << NVM_PATH << endl;
    cout << "------" << endl;
 
-   const bool VALIDATE = false;
+   const bool VALIDATE = true;
 
    // Testing / Validation code
    //   TestSomeInPlaceUpdateConfigurations();
@@ -81,28 +81,28 @@ int main(int argc, char **argv)
    RunExperiment("log", log_based);
    char *log_result = log_based.GetResult();
 
-   if (v1::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v1::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates1(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("inplace1", inplace_updates1);
-      inplace_updates1.CreateResult();
-
-      if (VALIDATE) {
-         char *inplace1_result = inplace_updates1.CreateResult();
-         cout << "res1: " << memcmp(inplace1_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
-
-   if (v2::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v2::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates2(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("inplace2", inplace_updates2);
-      inplace_updates2.CreateResult();
-
-      if (VALIDATE) {
-         char *inplace2_result = inplace_updates2.CreateResult();
-         cout << "res2: " << memcmp(inplace2_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
-
+//   if (v1::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
+//      v1::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates1(NVM_PATH, ENTRY_COUNT);
+//      RunExperiment("inplace1", inplace_updates1);
+//      inplace_updates1.CreateResult();
+//
+//      if (VALIDATE) {
+//         char *inplace1_result = inplace_updates1.CreateResult();
+//         cout << "res1: " << memcmp(inplace1_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
+//      }
+//   }
+//
+//   if (v2::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
+//      v2::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates2(NVM_PATH, ENTRY_COUNT);
+//      RunExperiment("inplace2", inplace_updates2);
+//      inplace_updates2.CreateResult();
+//
+//      if (VALIDATE) {
+//         char *inplace2_result = inplace_updates2.CreateResult();
+//         cout << "res2: " << memcmp(inplace2_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
+//      }
+//   }
+//
    if (v3::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
       v3::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates3(NVM_PATH, ENTRY_COUNT);
       RunExperiment("inplace3", inplace_updates3);
@@ -113,28 +113,28 @@ int main(int argc, char **argv)
          cout << "res3: " << memcmp(inplace3_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
       }
    }
+//
+//   if (v4::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
+//      v4::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates4(NVM_PATH, ENTRY_COUNT);
+//      RunExperiment("inplace4(stef)", inplace_updates4);
+//      inplace_updates4.CreateResult();
+//
+//      if (VALIDATE) {
+//         char *inplace4_result = inplace_updates4.CreateResult();
+//         cout << "res4: " << memcmp(inplace4_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
+//      }
+//   }
 
-   if (v4::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v4::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates4(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("inplace4(stef)", inplace_updates4);
-      inplace_updates4.CreateResult();
-
-      if (VALIDATE) {
-         char *inplace4_result = inplace_updates4.CreateResult();
-         cout << "res4: " << memcmp(inplace4_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
-
-   if (v5::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v5::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates5(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("inplace5(stef)", inplace_updates5);
-      inplace_updates5.CreateResult();
-
-      if (VALIDATE) {
-         char *inplace5_result = inplace_updates5.CreateResult();
-         cout << "res5: " << memcmp(inplace5_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
+//   if (v5::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
+//      v5::InPlaceLikeUpdates<ENTRY_SIZE> inplace_updates5(NVM_PATH, ENTRY_COUNT);
+//      RunExperiment("inplace5(stef)", inplace_updates5);
+//      inplace_updates5.CreateResult();
+//
+//      if (VALIDATE) {
+//         char *inplace5_result = inplace_updates5.CreateResult();
+//         cout << "res5: " << memcmp(inplace5_result, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
+//      }
+//   }
 
    //   {
    //      CowBasedUpdates<ENTRY_SIZE> cow_based(NVM_PATH);

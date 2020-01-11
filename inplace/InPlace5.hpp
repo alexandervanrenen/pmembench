@@ -65,6 +65,7 @@ __m128i constShuffle128_AVX2 = _mm_set_epi8(0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 
 // -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
 struct InplaceField {
+
    static const uint32_t BIT_COUNT = BYTE_COUNT * 8;
    static const uint32_t BLOCK_COUNT = (BIT_COUNT + 30) / 31;
 
@@ -75,25 +76,43 @@ struct InplaceField {
       memset(blocks, 0, sizeof(uint64_t) * BLOCK_COUNT);
    }
 
+   // ok dann werden die neuen rein-ge-ordert. Dann sieht ja block[0] so aus "oooonnnn"
+
    void WriteNoCheck(const char *data)
    {
       const uint32_t *values = (const uint32_t *) data;
 
       // Load the 4 * 32 bit values into 4 * 64 Bit values
-      __m128i input32 = _mm_loadu_si128((const __m128i*)values);
+      __m128i input32 = _mm_loadu_si128((const __m128i *) values);
       __m256i newValues = _mm256_cvtepu32_epi64(input32);
 
       // Combine new and old values
-      __m256i oldValuesMem = _mm256_loadu_si256((const __m256i*)&blocks[0]);
+      __m256i oldValuesMem = _mm256_loadu_si256((const __m256i *) &blocks[0]);
       __m256i oldValues = _mm256_shuffle_epi8(oldValuesMem, constShuffle_AVX2);
       newValues = _mm256_or_si256(newValues, oldValues);
       newValues = _mm256_add_epi8(newValues, constAdd_AVX2);
-      _mm256_storeu_si256((__m256i*)&blocks[0], newValues);
+      _mm256_storeu_si256((__m256i *) &blocks[0], newValues);
 
       // Low byes of old value
       __m128i block4 = _mm256_castsi256_si128(_mm256_permutevar8x32_epi32(oldValuesMem, constPermute_AVX2));
       block4 = _mm_shuffle_epi8(block4, constShuffle128_AVX2);
       blocks[4] = _mm_cvtsi128_si64(block4) | ((blocks[4] + 1) & 0xFF);
+   }
+
+   static void Dump256(__m256i val)
+   {
+      char arr[32];
+      _mm256_storeu_si256((__m256i_u *) arr, val);
+      DumpHexReverse(arr, 32, std::cout);
+      std::cout << std::endl;
+   }
+
+   static void Dump128(__m128i val)
+   {
+      char arr[16];
+      _mm_storeu_si128((__m128i_u *) arr, val);
+      DumpHexReverse(arr, 16, std::cout);
+      std::cout << std::endl;
    }
 
    char *ReadNoCheck()
@@ -144,8 +163,23 @@ struct InPlaceLikeUpdates {
       entries = (InplaceField<entry_size> *) nvm_data.Data();
       for (uint64_t i = 0; i<entry_count; i++) {
          entries[i].Reset();
-         entries[i].WriteNoCheck(data.data());
+         //         entries[i].WriteNoCheck(data.data());
       }
+
+      char test[16];
+      for (uint32_t i = 0; i<16; i++) {
+         test[i] = i + 10;
+      }
+      DoUpdate(0, test);
+      for (uint32_t i = 0; i<16; i++) {
+         test[i] = i + 40;
+      }
+      DoUpdate(0, test);
+      for (uint32_t i = 0; i<16; i++) {
+         test[i] = i + 80;
+      }
+      DoUpdate(0, test);
+      exit(0);
    }
 
    void DoUpdate(uint64_t entry_id, char *new_data)

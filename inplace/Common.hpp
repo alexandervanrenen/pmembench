@@ -168,6 +168,17 @@ void DumpHex(const void *data_in, uint32_t size, std::ostream &os)
    }
 }
 // -------------------------------------------------------------------------------------
+void DumpHexReverse(const void *data_in, uint32_t size, std::ostream &os)
+{
+   char buffer[16];
+
+   const char *data = reinterpret_cast<const char *>(data_in);
+   for (int32_t i = size-1; i>=0; i--) {
+      sprintf(buffer, "%02hhx", data[i]);
+      os << buffer[0] << buffer[1] << " ";
+   }
+}
+// -------------------------------------------------------------------------------------
 template<class TARGET, class SOURCE>
 inline TARGET Cast(SOURCE *ptr) { return reinterpret_cast<TARGET>(ptr); }
 // -------------------------------------------------------------------------------------

@@ -22,7 +22,7 @@ struct Block {
    uint32_t GetOldStateNoCheck() const { return (data >> 32) & ~(1ull << pos); }
    uint32_t GetNewStateNoCheck() const { return (data & 0xffffffff) & ~(1ull << pos); }
 
-   void WriteNoCheck(uint32_t new_state)
+   inline void WriteNoCheck(uint32_t new_state)
    {
       data = (data << 32) | new_state;
    }
@@ -41,68 +41,67 @@ struct Block {
 };
 static_assert(sizeof(Block<0>) == 8);
 // -------------------------------------------------------------------------------------
-struct InplaceField16 {
+//@formatter:off
+__m256i constShuffle_AVX2 = _mm256_set_epi8(11, 10, 9, 8, 0x80, 0x80, 0x80, 0x80, 3, 2, 1, 0, 0x80, 0x80, 0x80, 0x80,
+                                            11, 10, 9, 8, 0x80, 0x80, 0x80, 0x80, 3, 2, 1, 0, 0x80, 0x80, 0x80, 0x80);
+//@formatter:on
+// -------------------------------------------------------------------------------------
+template<uint32_t BYTE_COUNT>
+struct InplaceField {
+   static const uint32_t BIT_COUNT = BYTE_COUNT * 8;
+   static const uint32_t BLOCK_COUNT = (BIT_COUNT + 30) / 31;
 
    alignas(64)
-   Block<0> b0;
-   Block<1> b1;
-   Block<2> b2;
-   Block<3> b3;
-   Block<4> b4;
-
-   void Print(std::ostream &out)
-   {
-      out << b0 << std::endl;
-      out << b1 << std::endl;
-      out << b2 << std::endl;
-      out << b3 << std::endl;
-      out << b4 << std::endl;
-   }
+   uint64_t blocks[BLOCK_COUNT];
 
    void Reset()
    {
-      b0.data = 0;
-      b1.data = 0;
-      b2.data = 0;
-      b3.data = 0;
-      b4.data = 0;
+      memset(blocks, 0, sizeof(uint64_t) * BLOCK_COUNT);
    }
 
    void WriteNoCheck(const char *data)
    {
-      static std::array<uint32_t, 4> VersionBit = {1, 1, 0, 0};
-
       assert((uint64_t) data % 4 == 0);
-      assert((uint64_t) &b0 % 64 == 0);
+      assert((uint64_t) &blocks[0] % 64 == 0);
+
+      static constexpr std::array<uint32_t, 4> version_bit = {1, 1, 0, 0};
+      static constexpr std::array<uint32_t, 2> masks = {0, ~uint32_t(0)};
+
+      //      __m256i oldValuesMem = _mm256_loadu_si256((const __m256i *) &blocks[0]);
+      //      std::cout << "old: ";
+      //      Dump256(oldValuesMem);
+      //      __m256i oldValues = _mm256_shuffle_epi8(oldValuesMem, constShuffle_AVX2);
+      //      std::cout << "new: ";
+      //      Dump256(oldValues);
+      //      _mm256_storeu_si256((__m256i *) &blocks[0], oldValues);
 
       uint32_t *input = (uint32_t *) data;
 
-      uint32_t next_version_bit = VersionBit[b0.GetVersionNoCheck()];
-      if (next_version_bit) {
-         //@formatter:off
-         b1.WriteNoCheck( input[0] | 0x02);
-         b2.WriteNoCheck( input[1] | 0x04);
-         b3.WriteNoCheck( input[2] | 0x08);
-         b4.WriteNoCheck( input[3] | 0x10);
-         b0.WriteNoCheck( (input[0] & 0x02)
-                          | (input[1] & 0x04)
-                          | (input[2] & 0x08)
-                          | (input[3] & 0x10)
-                          | 0x1);
-         //@formatter:on
-      } else {
-         //@formatter:off
-         b1.WriteNoCheck( input[0] & ~0x02);
-         b2.WriteNoCheck( input[1] & ~0x04);
-         b3.WriteNoCheck( input[2] & ~0x08);
-         b4.WriteNoCheck( input[3] & ~0x10);
-         b0.WriteNoCheck( (input[0] & 0x02)
-                          | (input[1] & 0x04)
-                          | (input[2] & 0x08)
-                          | (input[3] & 0x10)
-                          | 0x0);
-         //@formatter:on
-      }
+      uint32_t current_version_bit = (blocks[0] & 0x10) >> 4;
+      uint32_t next_version_bit = version_bit[current_version_bit];
+      uint32_t mask = masks[next_version_bit];
+
+      blocks[0] = (blocks[0] << 32) | ((input[0] & ~0x1) | (0x1 & mask));
+      blocks[1] = (blocks[1] << 32) | ((input[1] & ~0x2) | (0x2 & mask));
+      blocks[2] = (blocks[2] << 32) | ((input[2] & ~0x4) | (0x4 & mask));
+      blocks[3] = (blocks[3] << 32) | ((input[3] & ~0x8) | (0x8 & mask));
+      blocks[4] = (blocks[4] << 32) | ((input[0] & 0x1) | (input[1] & 0x2) | (input[2] & 0x4) | (input[3] & 0x8) | (next_version_bit << 4));
+   }
+
+   static void Dump256(__m256i val)
+   {
+      char arr[32];
+      _mm256_storeu_si256((__m256i_u *) arr, val);
+      DumpHexReverse(arr, 32, std::cout);
+      std::cout << std::endl;
+   }
+
+   static void Dump128(__m128i val)
+   {
+      char arr[16];
+      _mm_storeu_si128((__m128i_u *) arr, val);
+      DumpHexReverse(arr, 16, std::cout);
+      std::cout << std::endl;
    }
 
    char *ReadNoCheck()
@@ -111,47 +110,14 @@ struct InplaceField16 {
       assert((uint64_t) result % 4 == 0);
       uint32_t *output = (uint32_t *) result;
 
-      output[0] = (b1.GetNewStateNoCheck() & ~0x02) | (b0.GetNewStateNoCheck() & 0x02);
-      output[1] = (b2.GetNewStateNoCheck() & ~0x04) | (b0.GetNewStateNoCheck() & 0x04);
-      output[2] = (b3.GetNewStateNoCheck() & ~0x08) | (b0.GetNewStateNoCheck() & 0x08);
-      output[3] = (b4.GetNewStateNoCheck() & ~0x10) | (b0.GetNewStateNoCheck() & 0x10);
+      output[0] = (((Block<0> *) &blocks[0])->GetNewStateNoCheck() & ~0x1) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x1);
+      output[1] = (((Block<1> *) &blocks[1])->GetNewStateNoCheck() & ~0x2) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x2);
+      output[2] = (((Block<2> *) &blocks[2])->GetNewStateNoCheck() & ~0x4) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x4);
+      output[3] = (((Block<3> *) &blocks[3])->GetNewStateNoCheck() & ~0x8) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x8);
 
       return result;
    }
 };
-// -------------------------------------------------------------------------------------
-void TestInPlaceUpdates()
-{
-   Random ranny;
-   InplaceField16 field;
-
-   for (uint32_t i = 0; i<10000; i++) {
-      field.Reset();
-      char *input = CreateAlignedString(ranny, 16);
-      field.WriteNoCheck(input);
-      char *output = field.ReadNoCheck();
-
-      for (uint32_t i = 0; i<16; i++) {
-         if (input[i] != output[i]) {
-            std::cout << i << ": ";
-            DumpHex(input + i, 1, std::cout);
-            std::cout << " vs ";
-            DumpHex(output + i, 1, std::cout);
-            std::cout << std::endl;
-            throw;
-         }
-      }
-
-      free(output);
-      free(input);
-   }
-   std::cout << "all good for " << 16 << std::endl;
-}
-// -------------------------------------------------------------------------------------
-void TestSomeInPlaceUpdateConfigurations()
-{
-   TestInPlaceUpdates();
-}
 // -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct InPlaceLikeUpdates {
@@ -160,18 +126,34 @@ struct InPlaceLikeUpdates {
 
    NonVolatileMemory nvm_data;
    uint64_t entry_count;
-   InplaceField16 *entries;
+   InplaceField<entry_size> *entries;
 
    InPlaceLikeUpdates(const std::string &path, uint64_t entry_count)
-           : nvm_data(path + "/inplace3_data_file", sizeof(InplaceField16) * entry_count)
+           : nvm_data(path + "/inplace3_data_file", sizeof(InplaceField<entry_size>) * entry_count)
              , entry_count(entry_count)
    {
       std::vector<char> data(entry_size, 'a');
-      entries = (InplaceField16 *) nvm_data.Data();
+      entries = (InplaceField<entry_size> *) nvm_data.Data();
       for (uint64_t i = 0; i<entry_count; i++) {
          entries[i].Reset();
          entries[i].WriteNoCheck(data.data());
       }
+
+      //      char test[16];
+      //      for (uint32_t i = 0; i<16; i++) {
+      //         test[i] = i + 0;
+      //      }
+      //      DoUpdate(0, test);
+      //      for (uint32_t i = 0; i<16; i++) {
+      //         test[i] = i + 40;
+      //      }
+      //      DoUpdate(0, test);
+      //      for (uint32_t i = 0; i<16; i++) {
+      //         test[i] = i + 80;
+      //      }
+      //      DoUpdate(0, test);
+      //      std::endl << "exit" << endl;
+      //      exit(0);
    }
 
    void DoUpdate(uint64_t entry_id, char *new_data)
