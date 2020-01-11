@@ -163,23 +163,8 @@ struct InPlaceLikeUpdates {
       entries = (InplaceField<entry_size> *) nvm_data.Data();
       for (uint64_t i = 0; i<entry_count; i++) {
          entries[i].Reset();
-         //         entries[i].WriteNoCheck(data.data());
+         entries[i].WriteNoCheck(data.data());
       }
-
-      char test[16];
-      for (uint32_t i = 0; i<16; i++) {
-         test[i] = i + 10;
-      }
-      DoUpdate(0, test);
-      for (uint32_t i = 0; i<16; i++) {
-         test[i] = i + 40;
-      }
-      DoUpdate(0, test);
-      for (uint32_t i = 0; i<16; i++) {
-         test[i] = i + 80;
-      }
-      DoUpdate(0, test);
-      exit(0);
    }
 
    void DoUpdate(uint64_t entry_id, char *new_data)
@@ -204,11 +189,6 @@ struct InPlaceLikeUpdates {
    char *CreateResult()
    {
       char *result = (char *) malloc(entry_size * entry_count);
-      for (uint64_t i = 0; i<entry_count; i++) {
-         char *entry_as_string = entries[i].ReadNoCheck();
-         memcpy(result + i * entry_size, entry_as_string, entry_size);
-         free(entry_as_string);
-      }
       return result;
    }
 };

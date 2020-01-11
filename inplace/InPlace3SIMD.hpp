@@ -7,7 +7,7 @@
 #include <string>
 #include <array>
 // -------------------------------------------------------------------------------------
-namespace v3 {
+namespace v3simd {
 // -------------------------------------------------------------------------------------
 template<uint32_t pos>
 struct Block {
@@ -41,6 +41,27 @@ struct Block {
 };
 static_assert(sizeof(Block<0>) == 8);
 // -------------------------------------------------------------------------------------
+//@formatter:off
+const __m256i constShuffle_AVX2 = _mm256_set_epi8(11, 10, 9, 8, 0x80, 0x80, 0x80, 0x80, 3, 2, 1, 0, 0x80, 0x80, 0x80, 0x80,
+                                                  11, 10, 9, 8, 0x80, 0x80, 0x80, 0x80, 3, 2, 1, 0, 0x80, 0x80, 0x80, 0x80);
+const __m256i VERION_MASK = _mm256_set_epi8(
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, ~0x08,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, ~0x04,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, ~0x02,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, ~0x01);
+const __m256i VERSION_SET_MASK = _mm256_set_epi8(
+        0, 0, 0, 0, 0, 0, 0, 8,
+        0, 0, 0, 0, 0, 0, 0, 4,
+        0, 0, 0, 0, 0, 0, 0, 2,
+        0, 0, 0, 0, 0, 0, 0, 1);
+const __m256i VERSION_NOT_MASK = _mm256_set_epi8(
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0);
+const std::array<const __m256i*, 2> decision = {&VERSION_NOT_MASK, &VERSION_SET_MASK};
+//@formatter:on
+// -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
 struct InplaceField {
    static const uint32_t BIT_COUNT = BYTE_COUNT * 8;
@@ -59,19 +80,21 @@ struct InplaceField {
       assert((uint64_t) data % 4 == 0);
       assert((uint64_t) &blocks[0] % 64 == 0);
 
-      static constexpr std::array<uint32_t, 4> version_bit = {1, 1, 0, 0};
-      static constexpr std::array<uint32_t, 2> masks = {0, ~uint32_t(0)};
-
       uint32_t *input = (uint32_t *) data;
+      uint32_t next_version_bit = ((blocks[0] & (1ull << 32)) >> 32) ^0x1;
 
-      uint32_t current_version_bit = (blocks[0] & 0x10) >> 4;
-      uint32_t next_version_bit = version_bit[current_version_bit];
-      uint32_t mask = masks[next_version_bit];
+      // Shift old state
+      __m256i oldValuesMem = _mm256_loadu_si256((const __m256i *) &blocks[0]);
+      __m256i oldValues = _mm256_shuffle_epi8(oldValuesMem, constShuffle_AVX2);
 
-      blocks[0] = (blocks[0] << 32) | ((input[0] & ~0x1) | (0x1 & mask));
-      blocks[1] = (blocks[1] << 32) | ((input[1] & ~0x2) | (0x2 & mask));
-      blocks[2] = (blocks[2] << 32) | ((input[2] & ~0x4) | (0x4 & mask));
-      blocks[3] = (blocks[3] << 32) | ((input[3] & ~0x8) | (0x8 & mask));
+      __m128i input128 = _mm_loadu_si128((const __m128i *) input);
+      __m256i input256 = _mm256_cvtepu32_epi64(input128);
+
+      __m256i version_bit_disabled = _mm256_and_si256(input256, VERION_MASK);
+      __m256i new_version_applied = _mm256_or_si256(version_bit_disabled, *decision[next_version_bit]);
+      __m256i old_version_added = _mm256_or_si256(new_version_applied, oldValues);
+      _mm256_storeu_si256((__m256i *) &blocks[0], old_version_added);
+
       blocks[4] = (blocks[4] << 32) | ((input[0] & 0x1) | (input[1] & 0x2) | (input[2] & 0x4) | (input[3] & 0x8) | (next_version_bit << 4));
    }
 
