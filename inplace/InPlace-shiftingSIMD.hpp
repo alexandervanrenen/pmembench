@@ -49,16 +49,8 @@ const __m256i VERION_MASK = _mm256_set_epi8(
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, ~0x04,
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, ~0x02,
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, ~0x01);
-const __m256i VERSION_SET_MASK = _mm256_set_epi8(
-        0, 0, 0, 0, 0, 0, 0, 8,
-        0, 0, 0, 0, 0, 0, 0, 4,
-        0, 0, 0, 0, 0, 0, 0, 2,
-        0, 0, 0, 0, 0, 0, 0, 1);
-const __m256i VERSION_NOT_MASK = _mm256_set_epi8(
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0);
+const __m256i VERSION_SET_MASK = _mm256_set_epi64x(8, 4, 2, 1);
+const __m256i VERSION_NOT_MASK = _mm256_setzero_si256();
 const std::array<const __m256i*, 2> decision = {&VERSION_NOT_MASK, &VERSION_SET_MASK};
 //@formatter:on
 // -------------------------------------------------------------------------------------
