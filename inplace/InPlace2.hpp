@@ -7,6 +7,8 @@
 #include <string>
 #include <array>
 // -------------------------------------------------------------------------------------
+namespace v2 {
+// -------------------------------------------------------------------------------------
 struct Block {
    uint64_t data;
 
@@ -62,7 +64,7 @@ struct InplaceField {
    static const uint32_t BLOCK_COUNT = (BIT_COUNT + 30) / 31;
    static_assert(BYTE_COUNT>8, "Use normal uint64_t.");
 
-   std::array<Block, BLOCK_COUNT> blocks;
+   alignas(64) std::array<Block, BLOCK_COUNT> blocks;
 
    void Print(std::ostream &out)
    {
@@ -79,6 +81,7 @@ struct InplaceField {
    void WriteNoCheck(const char *data)
    {
       assert((uint64_t) data % 4 == 0);
+      assert((uint64_t) &blocks[0] % 64 == 0);
       uint32_t buffer = 0;
       uint32_t block_pos = 1; // Block zero is meta block
       uint32_t checker = 0;
@@ -136,6 +139,26 @@ struct InplaceField {
    }
 };
 // -------------------------------------------------------------------------------------
+template<>
+void InplaceField<16>::WriteNoCheck(const char *data)
+{
+   assert((uint64_t) data % 4 == 0);
+   assert((uint64_t) &blocks[0] % 64 == 0);
+
+   uint32_t *input = (uint32_t *) data;
+
+   //@formatter:off
+   blocks[1].WriteNoCheck( input[0] & ~0x80000000);
+   blocks[2].WriteNoCheck( input[1] & ~0x80000000);
+   blocks[3].WriteNoCheck( input[2] & ~0x80000000);
+   blocks[4].WriteNoCheck( input[3] & ~0x80000000);
+   blocks[0].WriteNoCheck( ((input[0] & 0x80000000) >> 31)
+                         | ((input[1] & 0x80000000) >> 30)
+                         | ((input[2] & 0x80000000) >> 29)
+                         | ((input[3] & 0x80000000) >> 28));
+   //@formatter:on
+}
+// -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
 void TestInPlaceUpdates()
 {
@@ -176,12 +199,15 @@ void TestSomeInPlaceUpdateConfigurations()
 // -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct InPlaceLikeUpdates {
+
+   static bool CanBeUsed(uint32_t entry_size_param) { return entry_size_param == 16; }
+
    NonVolatileMemory nvm_data;
    uint64_t entry_count;
    InplaceField<entry_size> *entries;
 
    InPlaceLikeUpdates(const std::string &path, uint64_t entry_count)
-           : nvm_data(path + "/inplace_data_file", sizeof(InplaceField<entry_size>) * entry_count)
+           : nvm_data(path + "/inplace2_data_file", sizeof(InplaceField<entry_size>) * entry_count)
              , entry_count(entry_count)
    {
       std::vector<char> data(entry_size, 'a');
@@ -220,4 +246,6 @@ struct InPlaceLikeUpdates {
       return result;
    }
 };
+// -------------------------------------------------------------------------------------
+}
 // -------------------------------------------------------------------------------------

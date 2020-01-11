@@ -105,14 +105,15 @@ void alex_FastCopyAndWriteBack(ub1 *nvm_begin, const ub1 *ram_begin, ub4 size)
    ub4 pos = 0;
    ub8 off = (ub8) nvm_begin % 64;
    if (off != 0) {
-      memcpy(nvm_begin, ram_begin, 64 - off);
+      ub8 byte_count = (64 - off)>size ? size : (64 - off);
+      memcpy(nvm_begin, ram_begin, byte_count);
       alex_WriteBack(nvm_begin);
-      pos = 64 - off;
+      pos = byte_count;
    }
 
    // Copy full cache lines (and flush)
-   assert(((ub8) nvm_begin + pos) % 64 == 0);
    for (; pos + 63<size; pos += 64) {
+      assert(((ub8) nvm_begin + pos) % 64 == 0);
       memcpy(nvm_begin + pos, ram_begin + pos, 64);
       alex_WriteBack(nvm_begin + pos);
    }
@@ -121,7 +122,10 @@ void alex_FastCopyAndWriteBack(ub1 *nvm_begin, const ub1 *ram_begin, ub4 size)
    if (pos<size) {
       memcpy(nvm_begin + pos, ram_begin + pos, size - pos);
       alex_WriteBack(nvm_begin + pos);
+      pos = size;
    }
+
+   assert(pos == size && "aahhhhh");
 }
 // -------------------------------------------------------------------------------------
 uint8_t *AlignedAlloc(uint64_t alignment, uint64_t size)
