@@ -1,8 +1,8 @@
-#include "InPlace1.hpp"
-#include "InPlace2.hpp"
-#include "InPlace2SIMD.hpp"
-#include "InPlace3.hpp"
-#include "InPlace3SIMD.hpp"
+#include "InPlace-generic.hpp"
+#include "InPlace-highbits.hpp"
+#include "InPlace-highbitsSIMD.hpp"
+#include "InPlace-shifting.hpp"
+#include "InPlace-shiftingSIMD.hpp"
 #include "LogBased.hpp"
 #include <chrono>
 // -------------------------------------------------------------------------------------
