@@ -77,18 +77,6 @@ struct InplaceField {
       memset(blocks, 0, sizeof(uint64_t) * BLOCK_COUNT);
    }
 
-   template<uint32_t size>
-   void WriteRec(const char *data)
-   {
-
-   }
-
-   template<>
-   void WriteRec<0>(const char *data)
-   {
-
-   }
-
    void WriteNoCheck(const char *data)
    {
       const uint32_t *values = (const uint32_t *) data;
@@ -118,49 +106,29 @@ struct InplaceField {
 
    void ReadNoCheck(char *result)
    {
+      uint32_t b16_cnt = BYTE_COUNT / 16 - 1;
       uint32_t high_bits = blocks[0];
 
-      if constexpr(BYTE_COUNT>=64) {
-         __m128i values = _mm_i32gather_epi32((const int *) &blocks[13], constGatherIndex, 4);
+      for (int32_t i = b16_cnt; i>=0; i--) {
+         // Gather 4 * 32-Bit Values out of 64-Bit Array (gather lower 32 bits of each 64 bit value)
+         __m128i values = _mm_i32gather_epi32((const int *) &blocks[1 + i * 4], constGatherIndex, 4);
+
+         // Remove highest bit, so we have 4 * 31 bi values
          values = _mm_and_si128(values, constAnd);
+
+         // Store the four high bits (lowest 4 bits in block[0]) to bit position 0, 8, 16, 24 (== align to byt boundary)
          __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(high_bits, 0x01010101));
          high_bits = high_bits >> 4;
-         highBitValue = _mm_cvtepu8_epi32(highBitValue);
-         highBitValue = _mm_slli_epi32(highBitValue, 31);
-         values = _mm_or_si128(values, highBitValue);
-         _mm_storeu_si128((__m128i *) (result + 48), values);
-      }
 
-      if constexpr(BYTE_COUNT>=48) {
-         __m128i values = _mm_i32gather_epi32((const int *) &blocks[9], constGatherIndex, 4);
-         values = _mm_and_si128(values, constAnd);
-         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(high_bits, 0x01010101));
-         high_bits = high_bits >> 4;
+         // Convert from 8 bit values to 32 bit values and shift left to the highest position
          highBitValue = _mm_cvtepu8_epi32(highBitValue);
          highBitValue = _mm_slli_epi32(highBitValue, 31);
-         values = _mm_or_si128(values, highBitValue);
-         _mm_storeu_si128((__m128i *) (result + 32), values);
-      }
 
-      if constexpr(BYTE_COUNT>=32) {
-         __m128i values = _mm_i32gather_epi32((const int *) &blocks[5], constGatherIndex, 4);
-         values = _mm_and_si128(values, constAnd);
-         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(high_bits, 0x01010101));
-         high_bits = high_bits >> 4;
-         highBitValue = _mm_cvtepu8_epi32(highBitValue);
-         highBitValue = _mm_slli_epi32(highBitValue, 31);
+         // OR together
          values = _mm_or_si128(values, highBitValue);
-         _mm_storeu_si128((__m128i *) (result + 16), values);
-      }
 
-      if constexpr(BYTE_COUNT>=16) {
-         __m128i values = _mm_i32gather_epi32((const int *) &blocks[1], constGatherIndex, 4);
-         values = _mm_and_si128(values, constAnd);
-         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(high_bits, 0x01010101));
-         highBitValue = _mm_cvtepu8_epi32(highBitValue);
-         highBitValue = _mm_slli_epi32(highBitValue, 31);
-         values = _mm_or_si128(values, highBitValue);
-         _mm_storeu_si128((__m128i *) result, values);
+         // Store result
+         _mm_storeu_si128((__m128i *) (result + i * 16), values);
       }
    }
 };
