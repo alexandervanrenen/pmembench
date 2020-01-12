@@ -5,23 +5,31 @@
 
 echo "" > results/bw_threads.txt
 
-CXX=clang++
+COMPILE="clang++ -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread"
 
-block_size=256
-for thread_count in `seq 1 30`; do
-   # Read nvm
-   $CXX -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread -DBLOCK_SIZE=$block_size && ./a.out 1e9 $thread_count nvm ${PMEM_PATH} | tee -a results/bw_threads.txt
+BYTE_COUNT=10e9
 
-   # Read ram
-   $CXX -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread -DBLOCK_SIZE=$block_size && ./a.out 1e9 $thread_count ram ${PMEM_PATH} | tee -a results/bw_threads.txt
+for BLOCK_SIZE in 256 1048576; do
+  ${COMPILE} -DBLOCK_SIZE=${BLOCK_SIZE} -o a1.out || exit -1
+  ${COMPILE} -DBLOCK_SIZE=${BLOCK_SIZE} -DWRITE=1 -o a2.out || exit -1
+  ${COMPILE} -DBLOCK_SIZE=${BLOCK_SIZE} -DWRITE=1 -DUSE_CLWB=1 -o a3.out || exit -1
+  ${COMPILE} -DBLOCK_SIZE=${BLOCK_SIZE} -DWRITE=1 -DSTREAMING=1 -o a4.out || exit -1
 
-   # Write nvm
-   $CXX -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread -DBLOCK_SIZE=$block_size -DWRITE=1 && ./a.out 1e9 $thread_count nvm ${PMEM_PATH} | tee -a results/bw_threads.txt
-   $CXX -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread -DBLOCK_SIZE=$block_size -DWRITE=1 -DUSE_CLWB=1 && ./a.out 1e9 $thread_count nvm ${PMEM_PATH} | tee -a results/bw_threads.txt
-   $CXX -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread -DBLOCK_SIZE=$block_size -DWRITE=1 -DSTREAMING=1 && ./a.out 1e9 $thread_count nvm ${PMEM_PATH} | tee -a results/bw_threads.txt
+  for THREAD_COUNT in `seq 1 30`; do
+     # Read nvm
+     ./a1.out ${BYTE_COUNT} ${THREAD_COUNT} nvm ${PMEM_PATH} | tee -a results/bw_threads.txt
 
-   # Write ram
-   $CXX -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread -DBLOCK_SIZE=$block_size -DWRITE=1 && ./a.out 1e9 $thread_count ram ${PMEM_PATH} | tee -a results/bw_threads.txt
-   $CXX -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread -DBLOCK_SIZE=$block_size -DWRITE=1 -DUSE_CLWB=1 && ./a.out 1e9 $thread_count ram ${PMEM_PATH} | tee -a results/bw_threads.txt
-   $CXX -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread -DBLOCK_SIZE=$block_size -DWRITE=1 -DSTREAMING=1 && ./a.out 1e9 $thread_count ram ${PMEM_PATH} | tee -a results/bw_threads.txt
+     # Read ram
+     ./a1.out ${BYTE_COUNT} ${THREAD_COUNT} ram ${PMEM_PATH} | tee -a results/bw_threads.txt
+
+     # Write nvm
+     ./a2.out ${BYTE_COUNT} ${THREAD_COUNT} nvm ${PMEM_PATH} | tee -a results/bw_threads.txt
+     ./a3.out ${BYTE_COUNT} ${THREAD_COUNT} nvm ${PMEM_PATH} | tee -a results/bw_threads.txt
+     ./a4.out ${BYTE_COUNT} ${THREAD_COUNT} nvm ${PMEM_PATH} | tee -a results/bw_threads.txt
+
+     # Write ram
+     ./a2.out ${BYTE_COUNT} ${THREAD_COUNT} ram ${PMEM_PATH} | tee -a results/bw_threads.txt
+     ./a3.out ${BYTE_COUNT} ${THREAD_COUNT} ram ${PMEM_PATH} | tee -a results/bw_threads.txt
+     ./a4.out ${BYTE_COUNT} ${THREAD_COUNT} ram ${PMEM_PATH} | tee -a results/bw_threads.txt
+  done;
 done;
