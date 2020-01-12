@@ -9,38 +9,6 @@
 // -------------------------------------------------------------------------------------
 namespace v3 {
 // -------------------------------------------------------------------------------------
-template<uint32_t pos>
-struct Block {
-   static_assert(pos<=31);
-
-   uint64_t data;
-
-   Block()
-           : data(0) {}
-
-   uint32_t GetVersionNoCheck() const { return (((data & (1ull << (pos + 32))) << 1) | (data & (1ull << pos))) >> pos; }
-   uint32_t GetOldStateNoCheck() const { return (data >> 32) & ~(1ull << pos); }
-   uint32_t GetNewStateNoCheck() const { return (data & 0xffffffff) & ~(1ull << pos); }
-
-   inline void WriteNoCheck(uint32_t new_state)
-   {
-      data = (data << 32) | new_state;
-   }
-
-   friend std::ostream &operator<<(std::ostream &os, const Block &b)
-   {
-      uint32_t version = b.GetVersionNoCheck();
-      uint32_t old_state = b.GetOldStateNoCheck();
-      uint32_t new_state = b.GetNewStateNoCheck();
-      os << "version: " << version << " old: ";
-      DumpHex(&old_state, 4, os);
-      os << " new: ";
-      DumpHex(&new_state, 4, os);
-      return os;
-   }
-};
-static_assert(sizeof(Block<0>) == 8);
-// -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
 struct InplaceField {
    static const uint32_t BIT_COUNT = BYTE_COUNT * 8;
@@ -68,18 +36,28 @@ struct InplaceField {
 
       uint32_t high_bits = 0;
 
-      static_assert(count == 4);
-
       //@formatter:off
-      if constexpr(count>=1) { high_bits |= input[0] & 0x1; blocks[0] = (blocks[0] << 32) | ((input[0] & ~0x1) | (0x1 & mask)); }
-      if constexpr(count>=2) { high_bits |= input[1] & 0x2; blocks[1] = (blocks[1] << 32) | ((input[1] & ~0x2) | (0x2 & mask)); }
-      if constexpr(count>=3) { high_bits |= input[2] & 0x4; blocks[2] = (blocks[2] << 32) | ((input[2] & ~0x4) | (0x4 & mask)); }
-      if constexpr(count>=4) { high_bits |= input[3] & 0x8; blocks[3] = (blocks[3] << 32) | ((input[3] & ~0x8) | (0x8 & mask)); }
+      if constexpr(count>=1)  { high_bits |= input[ 0] & 0x0001; blocks[ 0] = (blocks[ 0] << 32) | ((input[ 0] & ~0x0001) | (0x0001 & mask)); }
+      if constexpr(count>=2)  { high_bits |= input[ 1] & 0x0002; blocks[ 1] = (blocks[ 1] << 32) | ((input[ 1] & ~0x0002) | (0x0002 & mask)); }
+      if constexpr(count>=3)  { high_bits |= input[ 2] & 0x0004; blocks[ 2] = (blocks[ 2] << 32) | ((input[ 2] & ~0x0004) | (0x0004 & mask)); }
+      if constexpr(count>=4)  { high_bits |= input[ 3] & 0x0008; blocks[ 3] = (blocks[ 3] << 32) | ((input[ 3] & ~0x0008) | (0x0008 & mask)); }
+      if constexpr(count>=5)  { high_bits |= input[ 4] & 0x0010; blocks[ 4] = (blocks[ 4] << 32) | ((input[ 4] & ~0x0010) | (0x0010 & mask)); }
+      if constexpr(count>=6)  { high_bits |= input[ 5] & 0x0020; blocks[ 5] = (blocks[ 5] << 32) | ((input[ 5] & ~0x0020) | (0x0020 & mask)); }
+      if constexpr(count>=7)  { high_bits |= input[ 6] & 0x0040; blocks[ 6] = (blocks[ 6] << 32) | ((input[ 6] & ~0x0040) | (0x0040 & mask)); }
+      if constexpr(count>=8)  { high_bits |= input[ 7] & 0x0080; blocks[ 7] = (blocks[ 7] << 32) | ((input[ 7] & ~0x0080) | (0x0080 & mask)); }
+      if constexpr(count>=9)  { high_bits |= input[ 8] & 0x0100; blocks[ 8] = (blocks[ 8] << 32) | ((input[ 8] & ~0x0100) | (0x0100 & mask)); }
+      if constexpr(count>=10) { high_bits |= input[ 9] & 0x0200; blocks[ 9] = (blocks[ 9] << 32) | ((input[ 9] & ~0x0200) | (0x0200 & mask)); }
+      if constexpr(count>=11) { high_bits |= input[10] & 0x0400; blocks[10] = (blocks[10] << 32) | ((input[10] & ~0x0400) | (0x0400 & mask)); }
+      if constexpr(count>=12) { high_bits |= input[11] & 0x0800; blocks[11] = (blocks[11] << 32) | ((input[11] & ~0x0800) | (0x0800 & mask)); }
+      if constexpr(count>=13) { high_bits |= input[12] & 0x1000; blocks[12] = (blocks[12] << 32) | ((input[12] & ~0x1000) | (0x1000 & mask)); }
+      if constexpr(count>=14) { high_bits |= input[13] & 0x2000; blocks[13] = (blocks[13] << 32) | ((input[13] & ~0x2000) | (0x2000 & mask)); }
+      if constexpr(count>=15) { high_bits |= input[14] & 0x4000; blocks[14] = (blocks[14] << 32) | ((input[14] & ~0x4000) | (0x4000 & mask)); }
+      if constexpr(count>=16) { high_bits |= input[15] & 0x8000; blocks[15] = (blocks[15] << 32) | ((input[15] & ~0x8000) | (0x8000 & mask)); }
       //@formatter:on
 
-      blocks[4] = (blocks[4] << 32) | high_bits | (next_version_bit << 4);
+      blocks[count] = (blocks[count] << 32) | high_bits | (next_version_bit << count);
 
-      WriteRec<count - 31>(data + 31);
+      //      WriteRec<count - 31>(data + 31);
    }
 
    //@formatter:off
@@ -121,7 +99,7 @@ struct InplaceField {
       assert((uint64_t) data % 4 == 0);
       assert((uint64_t) &blocks[0] % 64 == 0);
 
-      WriteRec<4>(data);
+      WriteRec<BYTE_COUNT / 4>(data);
    }
 
    static void Dump256(__m256i val)
@@ -140,14 +118,71 @@ struct InplaceField {
       std::cout << std::endl;
    }
 
-   void ReadNoCheck(char *result)
+   // count is in 4 byte
+   template<int32_t count>
+   inline void ReadRec(char *result)
    {
       uint32_t *output = (uint32_t *) result;
 
-      output[0] = (blocks[0] & 0xfffffffe) | (blocks[4] & 0x1);
-      output[1] = (blocks[1] & 0xfffffffd) | (blocks[4] & 0x2);
-      output[2] = (blocks[2] & 0xfffffffb) | (blocks[4] & 0x4);
-      output[3] = (blocks[3] & 0xfffffff7) | (blocks[4] & 0x8);
+      //@formatter:off
+      if constexpr(count>=1)  { output[ 0] = (blocks[ 0] & 0xfffffffe) | (blocks[count] & 0x0001); }
+      if constexpr(count>=2)  { output[ 1] = (blocks[ 1] & 0xfffffffd) | (blocks[count] & 0x0002); }
+      if constexpr(count>=3)  { output[ 2] = (blocks[ 2] & 0xfffffffb) | (blocks[count] & 0x0004); }
+      if constexpr(count>=4)  { output[ 3] = (blocks[ 3] & 0xfffffff7) | (blocks[count] & 0x0008); }
+      if constexpr(count>=5)  { output[ 4] = (blocks[ 4] & 0xffffffef) | (blocks[count] & 0x0010); }
+      if constexpr(count>=6)  { output[ 5] = (blocks[ 5] & 0xffffffdf) | (blocks[count] & 0x0020); }
+      if constexpr(count>=7)  { output[ 6] = (blocks[ 6] & 0xffffffbf) | (blocks[count] & 0x0040); }
+      if constexpr(count>=8)  { output[ 7] = (blocks[ 7] & 0xffffff7f) | (blocks[count] & 0x0080); }
+      if constexpr(count>=9)  { output[ 8] = (blocks[ 8] & 0xfffffeff) | (blocks[count] & 0x0100); }
+      if constexpr(count>=10) { output[ 9] = (blocks[ 9] & 0xfffffdff) | (blocks[count] & 0x0200); }
+      if constexpr(count>=11) { output[10] = (blocks[10] & 0xfffffbff) | (blocks[count] & 0x0400); }
+      if constexpr(count>=12) { output[11] = (blocks[11] & 0xfffff7ff) | (blocks[count] & 0x0800); }
+      if constexpr(count>=13) { output[12] = (blocks[12] & 0xffffefff) | (blocks[count] & 0x1000); }
+      if constexpr(count>=14) { output[13] = (blocks[13] & 0xffffdfff) | (blocks[count] & 0x2000); }
+      if constexpr(count>=15) { output[14] = (blocks[14] & 0xffffbfff) | (blocks[count] & 0x4000); }
+      if constexpr(count>=16) { output[15] = (blocks[15] & 0xffff7fff) | (blocks[count] & 0x8000); }
+      //@formatter:on
+
+      //      ReadRec<count - 31>(result + 31);
+   }
+
+   //@formatter:off
+   template<> inline void ReadRec<0>(char *data) {}
+   template<> inline void ReadRec<-1>(char *data) {}
+   template<> inline void ReadRec<-2>(char *data) {}
+   template<> inline void ReadRec<-3>(char *data) {}
+   template<> inline void ReadRec<-4>(char *data) {}
+   template<> inline void ReadRec<-5>(char *data) {}
+   template<> inline void ReadRec<-6>(char *data) {}
+   template<> inline void ReadRec<-7>(char *data) {}
+   template<> inline void ReadRec<-8>(char *data) {}
+   template<> inline void ReadRec<-9>(char *data) {}
+   template<> inline void ReadRec<-10>(char *data) {}
+   template<> inline void ReadRec<-11>(char *data) {}
+   template<> inline void ReadRec<-12>(char *data) {}
+   template<> inline void ReadRec<-13>(char *data) {}
+   template<> inline void ReadRec<-14>(char *data) {}
+   template<> inline void ReadRec<-15>(char *data) {}
+   template<> inline void ReadRec<-16>(char *data) {}
+   template<> inline void ReadRec<-17>(char *data) {}
+   template<> inline void ReadRec<-18>(char *data) {}
+   template<> inline void ReadRec<-19>(char *data) {}
+   template<> inline void ReadRec<-20>(char *data) {}
+   template<> inline void ReadRec<-21>(char *data) {}
+   template<> inline void ReadRec<-22>(char *data) {}
+   template<> inline void ReadRec<-23>(char *data) {}
+   template<> inline void ReadRec<-24>(char *data) {}
+   template<> inline void ReadRec<-25>(char *data) {}
+   template<> inline void ReadRec<-26>(char *data) {}
+   template<> inline void ReadRec<-27>(char *data) {}
+   template<> inline void ReadRec<-28>(char *data) {}
+   template<> inline void ReadRec<-29>(char *data) {}
+   template<> inline void ReadRec<-30>(char *data) {}
+   //@formatter:on
+
+   void ReadNoCheck(char *result)
+   {
+      ReadRec<BYTE_COUNT / 4>(result);
    }
 };
 // -------------------------------------------------------------------------------------

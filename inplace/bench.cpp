@@ -146,7 +146,7 @@ int main(int argc, char **argv)
       throw;
 
    // Run Experiments
-//      RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
+//   RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
    //   RunExperiment<v1::InPlaceLikeUpdates<ENTRY_SIZE>>("generic-loop", update_vec);
    //   RunExperiment<v2::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits", update_vec);
    RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
