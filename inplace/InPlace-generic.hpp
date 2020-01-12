@@ -198,11 +198,13 @@ struct InPlaceLikeUpdates {
       }
    }
 
-   void DoUpdate(uint64_t entry_id, char *new_data)
+   void DoUpdate(const UpdateOperation<entry_size> &op)
    {
-      entries[entry_id].WriteNoCheck(new_data);
+      entries[op.entry_id].WriteNoCheck((const char *) &op);
       for (uint32_t i = 0; i<sizeof(InplaceField<entry_size>); i += 64) {
-         alex_WriteBack((char *) (entries + entry_id) + i);
+         char *addr = (char *) (entries + op.entry_id) + i;
+         assert((uint64_t) addr % 64 == 0);
+         alex_WriteBack(addr);
       }
       alex_SFence();
    }
@@ -217,15 +219,14 @@ struct InPlaceLikeUpdates {
       return results;
    }
 
-   char *CreateResult()
+   void ReadResult(std::vector<UpdateOperation<entry_size>> &result)
    {
-      char *result = (char *) malloc(entry_size * entry_count);
+      assert(result.size() == entry_count);
       for (uint64_t i = 0; i<entry_count; i++) {
          char *entry_as_string = entries[i].ReadNoCheck();
-         memcpy(result + i * entry_size, entry_as_string, entry_size);
+         memcpy((char *) &result[i], entry_as_string, entry_size);
          free(entry_as_string);
       }
-      return result;
    }
 };
 // -------------------------------------------------------------------------------------

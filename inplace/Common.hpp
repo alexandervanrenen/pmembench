@@ -173,7 +173,7 @@ void DumpHexReverse(const void *data_in, uint32_t size, std::ostream &os)
    char buffer[16];
 
    const char *data = reinterpret_cast<const char *>(data_in);
-   for (int32_t i = size-1; i>=0; i--) {
+   for (int32_t i = size - 1; i>=0; i--) {
       sprintf(buffer, "%02hhx", data[i]);
       os << buffer[0] << buffer[1] << " ";
    }
@@ -193,5 +193,21 @@ char *CreateAlignedString(Random &ranny, uint32_t len)
    data[len] = '\0';
 
    return data;
+}
+// -------------------------------------------------------------------------------------
+template<uint64_t complete_size>
+struct UpdateOperation {
+   alignas(64) uint64_t entry_id;
+   std::array<char, complete_size - 8> data;
+};
+template<uint64_t complete_size>
+inline bool operator==(const UpdateOperation<complete_size> &lhs, const UpdateOperation<complete_size> &rhs)
+{
+   return lhs.entry_id == rhs.entry_id && memcmp(lhs.data.data(), rhs.data.data(), complete_size - 8) == 0;
+}
+template<uint64_t complete_size>
+inline bool operator!=(const UpdateOperation<complete_size> &lhs, const UpdateOperation<complete_size> &rhs)
+{
+   return lhs.entry_id != rhs.entry_id || memcmp(lhs.data.data(), rhs.data.data(), complete_size - 8) != 0;
 }
 // -------------------------------------------------------------------------------------

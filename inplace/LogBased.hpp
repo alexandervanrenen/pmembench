@@ -2,13 +2,9 @@
 #include "NonVolatileMemory.hpp"
 #include <memory>
 // -------------------------------------------------------------------------------------
+template<uint32_t entry_size>
 struct LogWriterZeroCached {
-
-   struct Entry {
-      uint64_t payload_size; // header
-      uint64_t entry_id; // header
-      uint8_t data[];
-   };
+   static_assert(entry_size % 8 == 0);
 
    struct File {
       // Header
@@ -43,14 +39,12 @@ struct LogWriterZeroCached {
       memset((uint8_t *) active_cl, 0, 64);
    }
 
-   uint64_t AddLogEntry(const Entry &entry)
+   uint64_t AddLogEntry(const UpdateOperation<entry_size> &entry)
    {
-      uint32_t size = entry.payload_size + 8;
-      uint32_t blks = size / 8;
+      uint32_t blks = entry_size / 8;
 
       assert(next_free % 8 == 0);
-      assert(entry.payload_size % 8 == 0);
-      assert(next_free + size<nvm.GetByteCount());
+      assert(next_free + entry_size<nvm.GetByteCount());
 
       uint32_t pop_cnt = 0;
       const uint64_t *ram_begin = reinterpret_cast<const uint64_t *>(&entry);
@@ -108,9 +102,14 @@ struct LogWriterZeroCached {
          active_cl[cl_pos] = ram_begin[pos];
          pop_cnt += alex_PopCount(ram_begin[pos]);
          cl_pos++;
+
+         if (cl_pos % 8 == 0) {
+            memset((uint8_t *) active_cl, 0, 64);
+            cl_pos = 0;
+            nvm_begin += 64;
+         }
       }
 
-      //      cout << "writing pop_cnt to " << (uint64_t(nvm_begin) - uint64_t(file.data)) + cl_pos << endl;
       active_cl[cl_pos] = pop_cnt;
       cl_pos++;
       alex_FlushClToNvm(nvm_begin, (uint8_t *) active_cl);
@@ -123,42 +122,8 @@ struct LogWriterZeroCached {
       }
 
       // Advance and done
-      next_free += entry.payload_size + 16;
+      next_free += entry_size + 8;
       return next_free;
-   }
-
-   std::unique_ptr<Entry> GetNextLogEntry() // Read code is only to verify correctnes
-   {
-      if (log_read_offset == next_free) {
-         return nullptr;
-      }
-
-      // Read length
-      uint64_t len = *(uint64_t *) &file.data[log_read_offset];
-      log_read_offset += 8;
-      uint64_t pop_cnt = 0;
-      pop_cnt += alex_PopCount(len);
-
-      // Read data
-      std::vector<uint64_t> result(len);
-      for (uint32_t pos = 0; pos<len; pos += 8) {
-         result[pos / 8] = *(uint64_t *) (file.data + log_read_offset);
-         log_read_offset += 8;
-         pop_cnt += alex_PopCount(result[pos / 8]);
-      }
-
-      // Read pop cnt
-      uint64_t read_pop_cnt = *(uint64_t *) (file.data + log_read_offset);
-      log_read_offset += 8;
-      if (read_pop_cnt != pop_cnt) {
-         std::cout << "read_pop_cnt does not match !! " << read_pop_cnt << " vs " << pop_cnt << std::endl;
-         throw;
-      }
-
-      Entry *entry = new(malloc(sizeof(Entry) + result.size())) Entry();
-      entry->payload_size = result.size();
-      memcpy(entry->data, (uint8_t *) result.data(), result.size());
-      return std::unique_ptr<Entry>(entry);
    }
 
    uint64_t GetWrittenByteCount() const
@@ -169,58 +134,45 @@ struct LogWriterZeroCached {
 // -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct LogBasedUpdates {
+   const static uint64_t LOG_BUFFER_SIZE = 10e9;
    NonVolatileMemory nvm_log;
    NonVolatileMemory nvm_data;
-   LogWriterZeroCached log_writer;
-   std::unique_ptr<LogWriterZeroCached::Entry> entry;
+   LogWriterZeroCached<entry_size> log_writer;
    uint64_t entry_count;
+   UpdateOperation<entry_size> *data_on_nvm;
 
-   LogBasedUpdates(const std::string &path, uint64_t entry_count, uint64_t log_buffer_size)
-           : nvm_log(path + "/log_log_file", log_buffer_size)
-             , nvm_data(path + "/log_data_file", entry_count * entry_size)
+   LogBasedUpdates(const std::string &path, uint64_t entry_count)
+           : nvm_log(path + "/log_log_file", LOG_BUFFER_SIZE)
+             , nvm_data(path + "/log_data_file", entry_count * sizeof(UpdateOperation<entry_size>))
              , log_writer(nvm_log)
-             , entry(new(malloc(sizeof(LogWriterZeroCached::Entry) + entry_size)) LogWriterZeroCached::Entry())
              , entry_count(entry_count)
    {
-      assert(nvm_log.GetByteCount()>=log_buffer_size);
+      assert(nvm_log.GetByteCount()>=LOG_BUFFER_SIZE);
       assert(nvm_data.GetByteCount()>=entry_size * entry_count);
 
       memset(nvm_data.Data(), 'a', nvm_data.GetByteCount());
       pmem_persist(nvm_data.Data(), nvm_data.GetByteCount());
+
+      data_on_nvm = (UpdateOperation<entry_size> *) nvm_data.Data();
    }
 
-   void DoUpdate(uint64_t entry_id, LogWriterZeroCached::Entry *new_data)
+   void DoUpdate(const UpdateOperation<entry_size> &op)
    {
-      assert(entry_id<entry_count);
-      assert(new_data->payload_size == entry_size);
+      assert(op.entry_id<entry_count);
 
-      new_data->entry_id = entry_id;
-      log_writer.AddLogEntry(*new_data);
+      log_writer.AddLogEntry(op);
 
-      ub1 *entry_begin = nvm_data.Data() + (entry_id * entry_size);
-      alex_FastCopyAndWriteBack(entry_begin, new_data->data, entry_size);
+      ub1 *entry_begin = nvm_data.Data() + (op.entry_id * sizeof(UpdateOperation<entry_size>));
+      alex_FastCopyAndWriteBack(entry_begin, (ub1 *) &op, entry_size);
       alex_SFence();
    }
 
-   std::vector<LogWriterZeroCached::Entry *> PrepareUpdates(uint64_t count)
+   void ReadResult(std::vector<UpdateOperation<entry_size>> &result)
    {
-      Random ranny;
-      std::vector<LogWriterZeroCached::Entry *> results;
-      for (uint64_t i = 0; i<count; i++) {
-         LogWriterZeroCached::Entry *entry = (LogWriterZeroCached::Entry *) malloc(sizeof(LogWriterZeroCached::Entry) + entry_size);
-         entry->payload_size = entry_size;
-         char *str = CreateAlignedString(ranny, entry_size);
-         memcpy(entry->data, str, entry_size);
-         free(str);
-         results.push_back(entry);
+      assert(result.size() == entry_count);
+      for (uint64_t i = 0; i<entry_count; i++) {
+         result[i] = data_on_nvm[i];
       }
-
-      return results;
-   }
-
-   char *GetResult()
-   {
-      return (char *) nvm_data.Data();
    }
 };
 // -------------------------------------------------------------------------------------

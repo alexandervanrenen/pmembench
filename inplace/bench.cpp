@@ -14,40 +14,74 @@ using namespace std;
 #endif
 // -------------------------------------------------------------------------------------
 uint64_t UPDATE_COUNT;
-uint64_t DATA_SIZE;
 uint64_t ENTRY_COUNT;
 string NVM_PATH;
-const uint64_t UNIQUE_STRING_COUNT = 128;
+vector<UpdateOperation<ENTRY_SIZE>> log_result;
 // -------------------------------------------------------------------------------------
 template<class COMPETITOR>
-void RunExperiment(const string &technique_name, COMPETITOR &competitor)
+void RunExperiment(const std::string &competitor_name, vector<UpdateOperation<ENTRY_SIZE>> &updates)
 {
-   auto update_vec = competitor.PrepareUpdates(UNIQUE_STRING_COUNT);
+   COMPETITOR competitor(NVM_PATH, ENTRY_COUNT);
    Random ranny;
 
    auto begin_ts = chrono::high_resolution_clock::now();
-
    for (uint64_t u = 0; u<UPDATE_COUNT; u++) {
-      competitor.DoUpdate(ranny.Rand() % ENTRY_COUNT, update_vec[u % UNIQUE_STRING_COUNT]);
+      competitor.DoUpdate(updates[u]);
    }
-
    auto end_ts = chrono::high_resolution_clock::now();
    uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
    uint64_t updates_per_second = (UPDATE_COUNT * 1e9) / ns;
 
    //@formatter:off
    cout << "res:"
-        << " technique: " << technique_name
+        << " technique: " << competitor_name
         << " entry_size: " << ENTRY_SIZE
-        << " updates_per_second: " << updates_per_second
+        << " updates_per_second(M): " << updates_per_second  / 1000 / 1000.0
         << endl;
    //@formatter:on
+
+   const bool VALIDATE = false;
+   if (VALIDATE) {
+      vector<UpdateOperation<ENTRY_SIZE>> result(ENTRY_COUNT);
+      competitor.ReadResult(result);
+      if (competitor_name == "log-based") {
+         log_result = result;
+         return;
+      }
+      if (log_result.size()>0) {
+         if (log_result.size() != result.size()) {
+            cout << "validation failed !!" << endl;
+            throw;
+         }
+         for (uint64_t i = 0; i<log_result.size(); i++) {
+            if (log_result[i] != result[i]) {
+               cout << "validation failed !!" << endl;
+               throw;
+            }
+         }
+         cout << "ok" << endl;
+      }
+   }
+}
+// -------------------------------------------------------------------------------------
+vector<UpdateOperation<ENTRY_SIZE>> PrepareUpdates()
+{
+   Random ranny;
+   std::vector<UpdateOperation<ENTRY_SIZE>> results(UPDATE_COUNT);
+   for (uint64_t i = 0; i<UPDATE_COUNT; i++) {
+      results[i].entry_id = ranny.Rand() % ENTRY_COUNT;
+      for (uint32_t j = 0; j<ENTRY_SIZE - 8; j += 8) {
+         *(uint64_t *) &results[i].data[j] = ranny.Rand();
+      }
+   }
+
+   return results;
 }
 // -------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
    if (argc != 4) {
-      cout << "usage: " << argv[0] << " update_count data_size nvm_path" << endl;
+      cout << "usage: " << argv[0] << " update_count entry_count nvm_path" << endl;
       throw;
    }
 
@@ -57,85 +91,35 @@ int main(int argc, char **argv)
    }
 
    // Config
-   UPDATE_COUNT = atof(argv[1]);
-   DATA_SIZE = atof(argv[2]);
+   ENTRY_COUNT = atof(argv[1]);
+   UPDATE_COUNT = atof(argv[2]);
    NVM_PATH = argv[3]; // Path to the nvm folder
-   ENTRY_COUNT = DATA_SIZE / ENTRY_SIZE;
 
    cout << "Config" << endl;
    cout << "------" << endl;
    cout << "entry_size         " << ENTRY_SIZE << endl;
-   cout << "entry_count        " << ENTRY_COUNT << endl;
-   cout << "data_size          " << DATA_SIZE << endl;
-   cout << "update_count       " << UPDATE_COUNT << endl;
+   cout << "entry_count(M)     " << ENTRY_COUNT / 1000 / 1000.0 << endl;
+   cout << "needed_data(GB)    " << ENTRY_COUNT * ENTRY_SIZE / 1000 / 1000 / 1000.0 << endl;
+   cout << "actual_data(GB)    " << ENTRY_COUNT * sizeof(UpdateOperation<ENTRY_SIZE>) / 1000 / 1000 / 1000.0 << endl;
+   cout << "update_count(M)    " << UPDATE_COUNT / 1000 / 1000.0 << endl;
    cout << "nvm_path           " << NVM_PATH << endl;
    cout << "------" << endl;
 
-   const bool VALIDATE = false;
-
-   // Testing / Validation code
-   //   TestSomeInPlaceUpdateConfigurations();
+   auto update_vec = PrepareUpdates();
 
    // Run Experiments
-   LogBasedUpdates<ENTRY_SIZE> log_based(NVM_PATH, ENTRY_COUNT, 10e9);
-   RunExperiment("log", log_based);
-   char *log_result = log_based.GetResult();
+   RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
+   RunExperiment<v1::InPlaceLikeUpdates<ENTRY_SIZE>>("generic-loop", update_vec);
+   RunExperiment<v2::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits", update_vec);
+   RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
+   RunExperiment<v3::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version", update_vec);
+   RunExperiment<v3simd::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version-simd", update_vec);
 
-   if (v1::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v1::InPlaceLikeUpdates<ENTRY_SIZE> tech(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("generic-loop", tech);
-
-      if (VALIDATE) {
-         char *res = tech.CreateResult();
-         cout << "ok: " << memcmp(res, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
-
-   if (v2::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v2::InPlaceLikeUpdates<ENTRY_SIZE> tech(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("high-bits", tech);
-
-      if (VALIDATE) {
-         char *res = tech.CreateResult();
-         cout << "ok: " << memcmp(res, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
-
-   if (v2simd::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v2simd::InPlaceLikeUpdates<ENTRY_SIZE> tech(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("high-bits-simd(stef)", tech);
-
-      if (VALIDATE) {
-         char *res = tech.CreateResult();
-         cout << "ok: " << memcmp(res, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
-
-   if (v3::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v3::InPlaceLikeUpdates<ENTRY_SIZE> tech(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("moving-version", tech);
-
-      if (VALIDATE) {
-         char *res = tech.CreateResult();
-         cout << "ok: " << memcmp(res, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
-
-   if (v3simd::InPlaceLikeUpdates<ENTRY_SIZE>::CanBeUsed(ENTRY_SIZE)) {
-      v3simd::InPlaceLikeUpdates<ENTRY_SIZE> tech(NVM_PATH, ENTRY_COUNT);
-      RunExperiment("moving-version-simd", tech);
-
-      if (VALIDATE) {
-         char *res = tech.CreateResult();
-         cout << "ok: " << memcmp(res, log_result, ENTRY_COUNT * ENTRY_SIZE) << endl;
-      }
-   }
-
-   //   {
+   // TODO: CoW !!!!
    //      CowBasedUpdates<ENTRY_SIZE> cow_based(NVM_PATH);
    //      RunExperiment("cow", log_based, strings);
-   //   }
 
+   cout << "done" << endl;
    return 0;
 }
 // -------------------------------------------------------------------------------------
