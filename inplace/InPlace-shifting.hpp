@@ -95,10 +95,10 @@ struct InplaceField {
    {
       uint32_t *output = (uint32_t *) result;
 
-      output[0] = (((Block<0> *) &blocks[0])->GetNewStateNoCheck() & ~0x1) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x1);
-      output[1] = (((Block<1> *) &blocks[1])->GetNewStateNoCheck() & ~0x2) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x2);
-      output[2] = (((Block<2> *) &blocks[2])->GetNewStateNoCheck() & ~0x4) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x4);
-      output[3] = (((Block<3> *) &blocks[3])->GetNewStateNoCheck() & ~0x8) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x8);
+      output[0] = (blocks[0] & 0xfffffffe) | (blocks[4] & 0x1);
+      output[1] = (blocks[1] & 0xfffffffd) | (blocks[4] & 0x2);
+      output[2] = (blocks[2] & 0xfffffffb) | (blocks[4] & 0x4);
+      output[3] = (blocks[3] & 0xfffffff7) | (blocks[4] & 0x8);
    }
 };
 // -------------------------------------------------------------------------------------

@@ -4,6 +4,9 @@
 #include "InPlace-shifting.hpp"
 #include "InPlace-shiftingSIMD.hpp"
 #include "LogBased.hpp"
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <chrono>
 // -------------------------------------------------------------------------------------
 using namespace std;
@@ -135,19 +138,26 @@ int main(int argc, char **argv)
 
    auto update_vec = PrepareUpdates();
 
+   cpu_set_t cpuset;
+   CPU_ZERO(&cpuset);
+   CPU_SET(0, &cpuset);
+   pthread_t currentThread = pthread_self();
+   if (pthread_setaffinity_np(currentThread, sizeof(cpu_set_t), &cpuset) != 0)
+      throw;
+
    // Run Experiments
-   RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
-   RunExperiment<v1::InPlaceLikeUpdates<ENTRY_SIZE>>("generic-loop", update_vec);
+   //   RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
+   //   RunExperiment<v1::InPlaceLikeUpdates<ENTRY_SIZE>>("generic-loop", update_vec);
    //   RunExperiment<v2::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits", update_vec);
    RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
    RunExperiment<v3::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version", update_vec);
-   //      RunExperiment<v3simd::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version-simd", update_vec);
+   //   RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
 
    // TODO: CoW !!!!
    //      CowBasedUpdates<ENTRY_SIZE> cow_based(NVM_PATH);
    //      RunExperiment("cow", log_based, strings);
 
-   cout << "done" << endl;
+   cout << "done 1" << endl;
    return 0;
 }
 // -------------------------------------------------------------------------------------

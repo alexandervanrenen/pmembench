@@ -62,6 +62,8 @@ __m256i constAdd = _mm256_set1_epi64x(0x4000000000000000L);
 __m256i constAnd1 = _mm256_set1_epi64x(0xC000000000000000L);
 __m256i constAnd2 = _mm256_set1_epi64x(0x3FFFFFFFFFFFFFFFL);
 __m128i constAnd3 = _mm_set1_epi32(0x7FFFFFFF);
+__m128i constGatherIndex = _mm_set_epi32(6, 4, 2, 0);
+__m128i constAnd = _mm_set1_epi32(0x7FFFFFFF);
 // -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
 struct InplaceField {
@@ -118,30 +120,47 @@ struct InplaceField {
 
    void ReadNoCheck(char *result)
    {
-      Block *blocks_local = (Block *) blocks;
-      assert((uint64_t) result % 4 == 0);
+      {
+         // Gather 4 * 32-Bit Values out of 64-Bit Array (gather lower 32 bits of each 64 bit value)
+         __m128i values = _mm_i32gather_epi32((const int *) &blocks[1], constGatherIndex, 4);
 
-      uint32_t high_bits = 0;
-      uint32_t block_pos = 0;
-      uint32_t checker = 0; // opt
+         // Remove highest bit, so we have 4 * 31 bi values
+         values = _mm_and_si128(values, constAnd);
 
-      for (uint32_t byte_pos = 0; byte_pos<BYTE_COUNT; byte_pos += 4) {
+         // Store the four high bits (lowest 4 bits in block[0]) to bit position 0, 8, 16, 24 (== align to byt boundary)
+         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(blocks[0], 0x01010101));
 
-         if (block_pos % 32 == 0) {
-            assert(checker % 31 == 0);
-            high_bits = blocks_local[block_pos++].ReadNoCheck();
-            checker = 0;
-         }
+         // Convert from 8 bit values to 32 bit values and shift left to the highest position
+         highBitValue = _mm_cvtepu8_epi32(highBitValue);
+         highBitValue = _mm_slli_epi32(highBitValue, 31);
 
-         uint32_t cur = blocks_local[block_pos++].ReadNoCheck();
-         cur = cur | ((high_bits & 0x1) << 31);
-         high_bits = high_bits >> 1;
-         memcpy(result + byte_pos, &cur, 4);
-         checker++;
+         // OR together
+         values = _mm_or_si128(values, highBitValue);
+
+         // Store result
+         _mm_storeu_si128((__m128i *) result, values);
       }
 
-      assert(block_pos == BLOCK_COUNT);
-      assert(high_bits == 0);
+      if constexpr(BYTE_COUNT>=32) {
+         // Gather 4 * 32-Bit Values out of 64-Bit Array (gather lower 32 bits of each 64 bit value)
+         __m128i values = _mm_i32gather_epi32((const int *) &blocks[5], constGatherIndex, 4);
+
+         // Remove highest bit, so we have 4 * 31 bi values
+         values = _mm_and_si128(values, constAnd);
+
+         // Store the four high bits (lowest 4 bits in block[0]) to bit position 0, 8, 16, 24 (== align to byt boundary)
+         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(blocks[0] >> 4, 0x01010101));
+
+         // Convert from 8 bit values to 32 bit values and shift left to the highest position
+         highBitValue = _mm_cvtepu8_epi32(highBitValue);
+         highBitValue = _mm_slli_epi32(highBitValue, 31);
+
+         // OR together
+         values = _mm_or_si128(values, highBitValue);
+
+         // Store result
+         _mm_storeu_si128((__m128i *) (result + 16), values);
+      }
    }
 };
 static_assert(sizeof(InplaceField<16>) == 64);
