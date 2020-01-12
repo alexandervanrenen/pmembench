@@ -54,25 +54,74 @@ struct InplaceField {
       memset(blocks, 0, sizeof(uint64_t) * BLOCK_COUNT);
    }
 
+   static constexpr std::array<uint32_t, 4> version_bit = {1, 1, 0, 0};
+   static constexpr std::array<uint32_t, 2> masks = {0, ~uint32_t(0)};
+
+   // count is in 4 byte
+   template<int32_t count>
+   inline void WriteRec(const char *data)
+   {
+      uint32_t *input = (uint32_t *) data;
+      uint32_t current_version_bit = (blocks[0] & 0x10) >> 4; // BUG !! need bit from old version
+      uint32_t next_version_bit = version_bit[current_version_bit];
+      uint32_t mask = masks[next_version_bit];
+
+      uint32_t high_bits = 0;
+
+      static_assert(count == 4);
+
+      //@formatter:off
+      if constexpr(count>=1) { high_bits |= input[0] & 0x1; blocks[0] = (blocks[0] << 32) | ((input[0] & ~0x1) | (0x1 & mask)); }
+      if constexpr(count>=2) { high_bits |= input[1] & 0x2; blocks[1] = (blocks[1] << 32) | ((input[1] & ~0x2) | (0x2 & mask)); }
+      if constexpr(count>=3) { high_bits |= input[2] & 0x4; blocks[2] = (blocks[2] << 32) | ((input[2] & ~0x4) | (0x4 & mask)); }
+      if constexpr(count>=4) { high_bits |= input[3] & 0x8; blocks[3] = (blocks[3] << 32) | ((input[3] & ~0x8) | (0x8 & mask)); }
+      //@formatter:on
+
+      blocks[4] = (blocks[4] << 32) | high_bits | (next_version_bit << 4);
+
+      WriteRec<count - 31>(data + 31);
+   }
+
+   //@formatter:off
+   template<> inline void WriteRec<0>(const char *data) {}
+   template<> inline void WriteRec<-1>(const char *data) {}
+   template<> inline void WriteRec<-2>(const char *data) {}
+   template<> inline void WriteRec<-3>(const char *data) {}
+   template<> inline void WriteRec<-4>(const char *data) {}
+   template<> inline void WriteRec<-5>(const char *data) {}
+   template<> inline void WriteRec<-6>(const char *data) {}
+   template<> inline void WriteRec<-7>(const char *data) {}
+   template<> inline void WriteRec<-8>(const char *data) {}
+   template<> inline void WriteRec<-9>(const char *data) {}
+   template<> inline void WriteRec<-10>(const char *data) {}
+   template<> inline void WriteRec<-11>(const char *data) {}
+   template<> inline void WriteRec<-12>(const char *data) {}
+   template<> inline void WriteRec<-13>(const char *data) {}
+   template<> inline void WriteRec<-14>(const char *data) {}
+   template<> inline void WriteRec<-15>(const char *data) {}
+   template<> inline void WriteRec<-16>(const char *data) {}
+   template<> inline void WriteRec<-17>(const char *data) {}
+   template<> inline void WriteRec<-18>(const char *data) {}
+   template<> inline void WriteRec<-19>(const char *data) {}
+   template<> inline void WriteRec<-20>(const char *data) {}
+   template<> inline void WriteRec<-21>(const char *data) {}
+   template<> inline void WriteRec<-22>(const char *data) {}
+   template<> inline void WriteRec<-23>(const char *data) {}
+   template<> inline void WriteRec<-24>(const char *data) {}
+   template<> inline void WriteRec<-25>(const char *data) {}
+   template<> inline void WriteRec<-26>(const char *data) {}
+   template<> inline void WriteRec<-27>(const char *data) {}
+   template<> inline void WriteRec<-28>(const char *data) {}
+   template<> inline void WriteRec<-29>(const char *data) {}
+   template<> inline void WriteRec<-30>(const char *data) {}
+   //@formatter:on
+
    void WriteNoCheck(const char *data)
    {
       assert((uint64_t) data % 4 == 0);
       assert((uint64_t) &blocks[0] % 64 == 0);
 
-      static constexpr std::array<uint32_t, 4> version_bit = {1, 1, 0, 0};
-      static constexpr std::array<uint32_t, 2> masks = {0, ~uint32_t(0)};
-
-      uint32_t *input = (uint32_t *) data;
-
-      uint32_t current_version_bit = (blocks[0] & 0x10) >> 4;
-      uint32_t next_version_bit = version_bit[current_version_bit];
-      uint32_t mask = masks[next_version_bit];
-
-      blocks[0] = (blocks[0] << 32) | ((input[0] & ~0x1) | (0x1 & mask));
-      blocks[1] = (blocks[1] << 32) | ((input[1] & ~0x2) | (0x2 & mask));
-      blocks[2] = (blocks[2] << 32) | ((input[2] & ~0x4) | (0x4 & mask));
-      blocks[3] = (blocks[3] << 32) | ((input[3] & ~0x8) | (0x8 & mask));
-      blocks[4] = (blocks[4] << 32) | ((input[0] & 0x1) | (input[1] & 0x2) | (input[2] & 0x4) | (input[3] & 0x8) | (next_version_bit << 4));
+      WriteRec<4>(data);
    }
 
    static void Dump256(__m256i val)
@@ -112,7 +161,7 @@ struct InPlaceLikeUpdates {
    InplaceField<entry_size> *entries;
 
    InPlaceLikeUpdates(const std::string &path, uint64_t entry_count)
-           : nvm_data(path + "/inplace_file", sizeof(InplaceField<entry_size>) * entry_count)
+           : nvm_data(path + "/inplace2_file", sizeof(InplaceField<entry_size>) * entry_count)
              , entry_count(entry_count)
    {
       std::vector<char> data(entry_size, 'a');

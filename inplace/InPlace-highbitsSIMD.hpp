@@ -107,8 +107,6 @@ struct InplaceField {
          _mm256_storeu_si256((__m256i *) &blocks[1 + i * 4], _mm256_or_si256(newVersionSimd, newPayloadSimd));
          currentHighBits = (currentHighBits << 4) | _mm_movemask_ps(_mm_castsi128_ps(input32));
       }
-      //      DumpHex(&currentHighBits, 4, std::cout);
-      //      std::cout << " vs " << (values[0] & 0xC0000000) << (values[1] & 0xC0000000) << (values[2] & 0xC0000000) << (values[3] & 0xC0000000) << std::endl;
 
       // The four high bits
       uint64_t block0 = blocks[0];
@@ -128,7 +126,7 @@ struct InplaceField {
          values = _mm_and_si128(values, constAnd);
 
          // Store the four high bits (lowest 4 bits in block[0]) to bit position 0, 8, 16, 24 (== align to byt boundary)
-         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(blocks[0], 0x01010101));
+         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(blocks[0] >> 0, 0x01010101));
 
          // Convert from 8 bit values to 32 bit values and shift left to the highest position
          highBitValue = _mm_cvtepu8_epi32(highBitValue);
@@ -149,7 +147,7 @@ struct InplaceField {
          values = _mm_and_si128(values, constAnd);
 
          // Store the four high bits (lowest 4 bits in block[0]) to bit position 0, 8, 16, 24 (== align to byt boundary)
-         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(blocks[0] >> 4, 0x01010101));
+         __m128i highBitValue = _mm_cvtsi64_si128(_pdep_u64(blocks[0], 0x01010101));
 
          // Convert from 8 bit values to 32 bit values and shift left to the highest position
          highBitValue = _mm_cvtepu8_epi32(highBitValue);
