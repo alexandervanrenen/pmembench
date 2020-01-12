@@ -91,18 +91,14 @@ struct InplaceField {
       std::cout << std::endl;
    }
 
-   char *ReadNoCheck()
+   void ReadNoCheck(char *result)
    {
-      char *result = (char *) malloc(16);
-      assert((uint64_t) result % 4 == 0);
       uint32_t *output = (uint32_t *) result;
 
       output[0] = (((Block<0> *) &blocks[0])->GetNewStateNoCheck() & ~0x1) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x1);
       output[1] = (((Block<1> *) &blocks[1])->GetNewStateNoCheck() & ~0x2) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x2);
       output[2] = (((Block<2> *) &blocks[2])->GetNewStateNoCheck() & ~0x4) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x4);
       output[3] = (((Block<3> *) &blocks[3])->GetNewStateNoCheck() & ~0x8) | (((Block<4> *) &blocks[4])->GetNewStateNoCheck() & 0x8);
-
-      return result;
    }
 };
 // -------------------------------------------------------------------------------------
@@ -142,10 +138,13 @@ struct InPlaceLikeUpdates {
    {
       assert(result.size() == entry_count);
       for (uint64_t i = 0; i<entry_count; i++) {
-         char *entry_as_string = entries[i].ReadNoCheck();
-         memcpy((char *) &result[i], entry_as_string, entry_size);
-         free(entry_as_string);
+         entries[i].ReadNoCheck((char *) &result[i]);
       }
+   }
+
+   void ReadSingleResult(UpdateOperation<entry_size> &result)
+   {
+      entries[result.entry_id].ReadNoCheck((char *) &result);
    }
 };
 // -------------------------------------------------------------------------------------

@@ -182,5 +182,10 @@ struct LogBasedUpdates {
          result[i] = data_on_nvm[i];
       }
    }
+
+   void ReadSingleResult(UpdateOperation<entry_size> &result)
+   {
+      result = data_on_nvm[result.entry_id];
+   }
 };
 // -------------------------------------------------------------------------------------

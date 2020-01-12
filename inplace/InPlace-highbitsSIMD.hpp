@@ -75,6 +75,18 @@ struct InplaceField {
       memset(blocks, 0, sizeof(uint64_t) * BLOCK_COUNT);
    }
 
+   template<uint32_t size>
+   void WriteRec(const char *data)
+   {
+
+   }
+
+   template<>
+   void WriteRec<0>(const char *data)
+   {
+
+   }
+
    void WriteNoCheck(const char *data)
    {
       const uint32_t *values = (const uint32_t *) data;
@@ -93,6 +105,8 @@ struct InplaceField {
          _mm256_storeu_si256((__m256i *) &blocks[1 + i * 4], _mm256_or_si256(newVersionSimd, newPayloadSimd));
          currentHighBits = (currentHighBits << 4) | _mm_movemask_ps(_mm_castsi128_ps(input32));
       }
+      //      DumpHex(&currentHighBits, 4, std::cout);
+      //      std::cout << " vs " << (values[0] & 0xC0000000) << (values[1] & 0xC0000000) << (values[2] & 0xC0000000) << (values[3] & 0xC0000000) << std::endl;
 
       // The four high bits
       uint64_t block0 = blocks[0];
@@ -102,13 +116,12 @@ struct InplaceField {
       blocks[0] = newVersion | newPayload;
    }
 
-   char *ReadNoCheck()
+   void ReadNoCheck(char *result)
    {
       Block *blocks_local = (Block *) blocks;
-      char *result = (char *) malloc(BYTE_COUNT);
       assert((uint64_t) result % 4 == 0);
 
-      uint32_t buffer = 0;
+      uint32_t high_bits = 0;
       uint32_t block_pos = 0;
       uint32_t checker = 0; // opt
 
@@ -116,19 +129,19 @@ struct InplaceField {
 
          if (block_pos % 32 == 0) {
             assert(checker % 31 == 0);
-            buffer = blocks_local[block_pos++].ReadNoCheck();
+            high_bits = blocks_local[block_pos++].ReadNoCheck();
             checker = 0;
          }
 
          uint32_t cur = blocks_local[block_pos++].ReadNoCheck();
-         cur = cur | ((buffer & 0x1) << 31);
-         buffer = buffer >> 1;
+         cur = cur | ((high_bits & 0x1) << 31);
+         high_bits = high_bits >> 1;
          memcpy(result + byte_pos, &cur, 4);
          checker++;
       }
 
-      assert(buffer == 0);
-      return result;
+      assert(block_pos == BLOCK_COUNT);
+      assert(high_bits == 0);
    }
 };
 static_assert(sizeof(InplaceField<16>) == 64);
@@ -169,10 +182,13 @@ struct InPlaceLikeUpdates {
    {
       assert(result.size() == entry_count);
       for (uint64_t i = 0; i<entry_count; i++) {
-         char *entry_as_string = entries[i].ReadNoCheck();
-         memcpy((char *) &result[i], entry_as_string, entry_size);
-         free(entry_as_string);
+         entries[i].ReadNoCheck((char *) &result[i]);
       }
+   }
+
+   void ReadSingleResult(UpdateOperation<entry_size> &result)
+   {
+      entries[result.entry_id].ReadNoCheck((char *) &result);
    }
 };
 // -------------------------------------------------------------------------------------

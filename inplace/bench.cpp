@@ -24,19 +24,47 @@ void RunExperiment(const std::string &competitor_name, vector<UpdateOperation<EN
    COMPETITOR competitor(NVM_PATH, ENTRY_COUNT);
    Random ranny;
 
-   auto begin_ts = chrono::high_resolution_clock::now();
-   for (uint64_t u = 0; u<UPDATE_COUNT; u++) {
-      competitor.DoUpdate(updates[u]);
+   uint64_t updates_per_second;
+   uint64_t seq_reads_per_second;
+   uint64_t rand_reads_per_second;
+
+   {
+      auto begin_ts = chrono::high_resolution_clock::now();
+      for (uint64_t u = 0; u<UPDATE_COUNT; u++) {
+         competitor.DoUpdate(updates[u]);
+      }
+      auto end_ts = chrono::high_resolution_clock::now();
+      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+      updates_per_second = (UPDATE_COUNT * 1e9) / ns;
    }
-   auto end_ts = chrono::high_resolution_clock::now();
-   uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
-   uint64_t updates_per_second = (UPDATE_COUNT * 1e9) / ns;
+
+   {
+      auto begin_ts = chrono::high_resolution_clock::now();
+      vector<UpdateOperation<ENTRY_SIZE>> result(ENTRY_COUNT);
+      competitor.ReadResult(result);
+      auto end_ts = chrono::high_resolution_clock::now();
+      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+      seq_reads_per_second = (ENTRY_COUNT * 1e9) / ns;
+   }
+
+   {
+      auto begin_ts = chrono::high_resolution_clock::now();
+      vector<UpdateOperation<ENTRY_SIZE>> result = updates;
+      for (uint64_t u = 0; u<UPDATE_COUNT; u++) {
+         competitor.ReadSingleResult(result[u]);
+      }
+      auto end_ts = chrono::high_resolution_clock::now();
+      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+      rand_reads_per_second = (UPDATE_COUNT * 1e9) / ns;
+   }
 
    //@formatter:off
    cout << "res:"
         << " technique: " << competitor_name
         << " entry_size: " << ENTRY_SIZE
         << " updates_per_second(M): " << updates_per_second  / 1000 / 1000.0
+        << " seq_read_per_second(M): " << seq_reads_per_second  / 1000 / 1000.0
+        << " rand_read_per_second(M): " << rand_reads_per_second  / 1000 / 1000.0
         << endl;
    //@formatter:on
 
@@ -110,10 +138,10 @@ int main(int argc, char **argv)
    // Run Experiments
    RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
    RunExperiment<v1::InPlaceLikeUpdates<ENTRY_SIZE>>("generic-loop", update_vec);
-   RunExperiment<v2::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits", update_vec);
+   //   RunExperiment<v2::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits", update_vec);
    RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
    RunExperiment<v3::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version", update_vec);
-   RunExperiment<v3simd::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version-simd", update_vec);
+   //      RunExperiment<v3simd::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version-simd", update_vec);
 
    // TODO: CoW !!!!
    //      CowBasedUpdates<ENTRY_SIZE> cow_based(NVM_PATH);

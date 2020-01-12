@@ -110,9 +110,8 @@ struct InplaceField {
       }
    }
 
-   char *ReadNoCheck()
+   void ReadNoCheck(char *result)
    {
-      char *result = (char *) malloc(BYTE_COUNT);
       assert((uint64_t) result % 4 == 0);
 
       uint32_t buffer = 0;
@@ -135,7 +134,6 @@ struct InplaceField {
       }
 
       assert(buffer == 0);
-      return result;
    }
 };
 // -------------------------------------------------------------------------------------
@@ -175,10 +173,13 @@ struct InPlaceLikeUpdates {
    {
       assert(result.size() == entry_count);
       for (uint64_t i = 0; i<entry_count; i++) {
-         char *entry_as_string = entries[i].ReadNoCheck();
-         memcpy((char *) &result[i], entry_as_string, entry_size);
-         free(entry_as_string);
+         entries[i].ReadNoCheck((char *) &result[i]);
       }
+   }
+
+   void ReadSingleResult(UpdateOperation<entry_size> &result)
+   {
+      entries[result.entry_id].ReadNoCheck((char *) &result);
    }
 };
 // -------------------------------------------------------------------------------------
