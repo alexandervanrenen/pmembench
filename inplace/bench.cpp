@@ -1,5 +1,5 @@
-#include "InPlace-highbitsSIMD.hpp"
-#include "InPlace-shifting.hpp"
+#include "InPlace-highBit.hpp"
+#include "InPlace-sliding.hpp"
 #include "LogBased.hpp"
 #include "CowBased.hpp"
 #include <sys/mman.h>
@@ -73,7 +73,7 @@ void RunExperiment(const std::string &competitor_name, vector<UpdateOperation<EN
    if (VALIDATE) {
       vector<UpdateOperation<ENTRY_SIZE>> result(ENTRY_COUNT);
       competitor.ReadResult(result);
-      if (competitor_name == "log-based") {
+      if (competitor_name == "log") {
          log_result = result;
          return;
       }
@@ -144,12 +144,12 @@ int main(int argc, char **argv)
       throw;
 
    // Run Experiments
-   RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
-   RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow-based", update_vec);
-   RunExperiment<v3::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version", update_vec);
-   RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
+   RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", update_vec);
+   RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow", update_vec);
+   RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", update_vec);
+   RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", update_vec);
 
-   cout << "done 2" << endl;
+   cout << "done 3" << endl;
    return 0;
 }
 // -------------------------------------------------------------------------------------

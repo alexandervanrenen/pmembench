@@ -7,8 +7,8 @@ namespace cow {
 template<uint32_t BYTE_COUNT>
 struct InplaceCow {
    alignas(64) bool is_a_active;
-   alignas(16) std::array<char, BYTE_COUNT> a;
-   alignas(16) std::array<char, BYTE_COUNT> b;
+   alignas(64) std::array<char, BYTE_COUNT> a;
+   alignas(64) std::array<char, BYTE_COUNT> b;
 
    void Write(const char *input)
    {

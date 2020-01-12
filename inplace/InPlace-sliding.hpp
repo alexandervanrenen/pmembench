@@ -7,7 +7,7 @@
 #include <string>
 #include <array>
 // -------------------------------------------------------------------------------------
-namespace v3 {
+namespace sliding {
 // -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
 struct InplaceField {
