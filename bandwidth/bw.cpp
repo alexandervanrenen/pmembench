@@ -159,8 +159,17 @@ int main(int argc, char **argv)
 
    double required_time = chrono::duration_cast<chrono::nanoseconds>(end - start).count();
    double gbs = (global_iterations * block_size) / required_time;
-   std::cout << "res use_clwb: " << use_clwb << " use_ram: " << use_ram << " use_streaming: " << use_streaming << " use_write: " << use_write << " thread_count: " << thread_count << " block_size: " << BLOCK_SIZE << " sum(GB/s): " << gbs << std::endl;
+   //@formatter:off
+   std::cout << "res"
+             << " use_clwb: " << use_clwb
+             << " use_ram: " << use_ram
+             << " use_streaming: " << use_streaming
+             << " use_write: " << use_write
+             << " thread_count: " << thread_count
+             << " total_size: " << total_size
+             << " block_size: " << BLOCK_SIZE
+             << " sum(GB/s): " << gbs << std::endl;
+   //@formatter:on
 
    return 0;
 }
-
