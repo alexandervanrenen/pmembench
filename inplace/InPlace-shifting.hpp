@@ -22,6 +22,7 @@ struct InplaceField {
       memset(_blocks, 0, sizeof(uint64_t) * BLOCK_COUNT);
    }
 
+   static constexpr std::array<uint32_t, 2> version_bit = {1, 0};
    static constexpr std::array<uint32_t, 2> masks = {0, ~uint32_t(0)};
 
    // count is in 4 byte
@@ -29,7 +30,7 @@ struct InplaceField {
    inline void WriteRec(const uint32_t *input, uint64_t *blocks)
    {
       uint32_t current_version_bit = (blocks[0] >> 32) & 0x1;
-      uint32_t next_version_bit = current_version_bit ^0x1;
+      uint32_t next_version_bit = version_bit[current_version_bit];
       uint32_t mask = masks[next_version_bit];
 
       uint32_t high_bits = 0;

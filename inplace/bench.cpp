@@ -71,7 +71,7 @@ void RunExperiment(const std::string &competitor_name, vector<UpdateOperation<EN
         << endl;
    //@formatter:on
 
-   const bool VALIDATE = true;
+   const bool VALIDATE = false;
    if (VALIDATE) {
       vector<UpdateOperation<ENTRY_SIZE>> result(ENTRY_COUNT);
       competitor.ReadResult(result);
@@ -148,9 +148,9 @@ int main(int argc, char **argv)
    // Run Experiments
    RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
    //   RunExperiment<v1::InPlaceLikeUpdates<ENTRY_SIZE>>("generic-loop", update_vec);
-   //   RunExperiment<v2::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits", update_vec);
-   RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
+   //      RunExperiment<v2::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits", update_vec);
    RunExperiment<v3::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version", update_vec);
+   RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
    //   RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
 
    // TODO: CoW !!!!
