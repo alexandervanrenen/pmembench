@@ -9,55 +9,6 @@
 // -------------------------------------------------------------------------------------
 namespace v2simd {
 // -------------------------------------------------------------------------------------
-struct Block {
-   uint64_t data;
-
-   Block()
-           : data(0) {}
-
-   uint32_t GetVersionNoCheck() const { return data >> 62; }
-   uint32_t GetOldStateNoCheck() const { return (data >> 31) & 0x7fffffff; }
-   uint32_t GetNewStateNoCheck() const { return data & 0x7fffffff; }
-
-   void WriteNoCheck(uint32_t new_state)
-   {
-      assert((new_state & 0x80000000) == 0);
-
-      uint32_t version = (GetVersionNoCheck() + 1) & 0x3;
-      uint32_t old_state = GetNewStateNoCheck();
-
-      AssignNoCheck(version, old_state, new_state);
-   }
-
-   uint32_t ReadNoCheck() const
-   {
-      return GetNewStateNoCheck();
-   }
-
-   friend std::ostream &operator<<(std::ostream &os, const Block &b)
-   {
-      uint32_t version = b.GetVersionNoCheck();
-      uint32_t old_state = b.GetOldStateNoCheck();
-      uint32_t new_state = b.GetNewStateNoCheck();
-      os << "version: " << version << " old: ";
-      DumpHex(&old_state, 4, os);
-      os << " new: ";
-      DumpHex(&new_state, 4, os);
-      return os;
-   }
-
-private:
-   void AssignNoCheck(uint64_t version, uint64_t old_state, uint64_t new_state)
-   {
-      assert((version & ~0x3) == 0);
-      assert((old_state & 0x80000000) == 0);
-      assert((new_state & 0x80000000) == 0);
-
-      data = (version << 62) | (old_state << 31) | new_state;
-   }
-};
-static_assert(sizeof(Block) == 8);
-// -------------------------------------------------------------------------------------
 __m256i constAdd = _mm256_set1_epi64x(0x4000000000000000L);
 __m256i constAnd1 = _mm256_set1_epi64x(0xC000000000000000L);
 __m256i constAnd2 = _mm256_set1_epi64x(0x3FFFFFFFFFFFFFFFL);
@@ -67,23 +18,26 @@ __m128i constAnd = _mm_set1_epi32(0x7FFFFFFF);
 // -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
 struct InplaceField {
-   static const uint32_t BIT_COUNT = BYTE_COUNT * 8;
-   static const uint32_t BLOCK_COUNT = (BIT_COUNT + 30) / 31;
+   static constexpr uint32_t BIT_COUNT = BYTE_COUNT * 8;
+   static constexpr uint32_t BLOCK_COUNT = (BIT_COUNT + 30) / 31;
+   static constexpr uint32_t META_BLOCK_COUNT = (BYTE_COUNT + 111) / 112; // For every 112 input bytes we need one meta block (8byte)
 
-   alignas(64) uint64_t blocks[BLOCK_COUNT];
+   alignas(64) uint64_t _blocks[BLOCK_COUNT];
 
    void Reset()
    {
-      memset(blocks, 0, sizeof(uint64_t) * BLOCK_COUNT);
+      memset(_blocks, 0, sizeof(uint64_t) * BLOCK_COUNT);
    }
 
-   void WriteNoCheck(const char *data)
+   template<uint32_t META>
+   void WriteRec(const uint32_t *values, uint64_t *blocks)
    {
-      const uint32_t *values = (const uint32_t *) data;
-
       uint32_t currentHighBits = 0;
 
-      for (uint32_t i = 0; i<BYTE_COUNT / 16; i++) {
+      constexpr uint32_t REMAINING_BYTE = BYTE_COUNT - (META * 112);
+      constexpr uint32_t ITERATION_COUNT = (META == META_BLOCK_COUNT - 1) ? REMAINING_BYTE / 16 : 7;
+
+      for (uint32_t i = 0; i<ITERATION_COUNT; i++) {
          // 4 * 32-Bit input values into SSE register
          __m128i input32 = _mm_loadu_si128((const __m128i *) &values[i * 4]);
 
@@ -102,14 +56,28 @@ struct InplaceField {
       uint64_t newPayload = ((block0 << 31) & 0x3FFFFFFFFFFFFFFFL) | currentHighBits;   // Payload with new and old value
 
       blocks[0] = newVersion | newPayload;
+
+      WriteRec<META + 1>(values + 28, blocks + 29);
    }
 
-   void ReadNoCheck(char *result)
+   template<>
+   void WriteRec<META_BLOCK_COUNT>(const uint32_t *, uint64_t *) {}
+
+   void WriteNoCheck(const char *data)
    {
-      uint32_t b16_cnt = BYTE_COUNT / 16 - 1;
+      const uint32_t *values = (const uint32_t *) data;
+      WriteRec<0>(values, _blocks);
+   }
+
+   template<uint32_t META>
+   void ReadRec(const char *result, uint64_t *blocks)
+   {
+      constexpr uint32_t REMAINING_BYTE = BYTE_COUNT - (META * 112);
+      constexpr uint32_t ITERATION_COUNT = (META == META_BLOCK_COUNT - 1) ? REMAINING_BYTE / 16 : 7;
+
       uint32_t high_bits = blocks[0];
 
-      for (int32_t i = b16_cnt; i>=0; i--) {
+      for (int32_t i = ITERATION_COUNT - 1; i>=0; i--) {
          // Gather 4 * 32-Bit Values out of 64-Bit Array (gather lower 32 bits of each 64 bit value)
          __m128i values = _mm_i32gather_epi32((const int *) &blocks[1 + i * 4], constGatherIndex, 4);
 
@@ -130,9 +98,18 @@ struct InplaceField {
          // Store result
          _mm_storeu_si128((__m128i *) (result + i * 16), values);
       }
+
+      ReadRec<META + 1>(result + 112, blocks + 29);
+   }
+
+   template<>
+   void ReadRec<META_BLOCK_COUNT>(const char *result, uint64_t *blocks) {}
+
+   void ReadNoCheck(char *result)
+   {
+      ReadRec<0>(result, _blocks);
    }
 };
-static_assert(sizeof(InplaceField<16>) == 64);
 // -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct InPlaceLikeUpdates {
