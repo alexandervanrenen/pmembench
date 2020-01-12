@@ -159,44 +159,6 @@ void InplaceField<16>::WriteNoCheck(const char *data)
    //@formatter:on
 }
 // -------------------------------------------------------------------------------------
-template<uint32_t BYTE_COUNT>
-void TestInPlaceUpdates()
-{
-   Random ranny;
-   InplaceField<BYTE_COUNT> field;
-
-   for (uint32_t i = 0; i<10000; i++) {
-      field.Reset();
-      char *input = CreateAlignedString(ranny, BYTE_COUNT);
-      field.WriteNoCheck(input);
-      char *output = field.ReadNoCheck();
-
-      for (uint32_t i = 0; i<BYTE_COUNT; i++) {
-         if (input[i] != output[i]) {
-            std::cout << i << ": ";
-            DumpHex(input + i, 1, std::cout);
-            std::cout << " vs ";
-            DumpHex(output + i, 1, std::cout);
-            std::cout << std::endl;
-            throw;
-         }
-      }
-
-      free(output);
-      free(input);
-   }
-   std::cout << "all good for " << BYTE_COUNT << std::endl;
-}
-// -------------------------------------------------------------------------------------
-void TestSomeInPlaceUpdateConfigurations()
-{
-   TestInPlaceUpdates<16>();
-   TestInPlaceUpdates<20>();
-   TestInPlaceUpdates<64>();
-   TestInPlaceUpdates<1000>();
-   TestInPlaceUpdates<10000>();
-}
-// -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct InPlaceLikeUpdates {
 
@@ -207,7 +169,7 @@ struct InPlaceLikeUpdates {
    InplaceField<entry_size> *entries;
 
    InPlaceLikeUpdates(const std::string &path, uint64_t entry_count)
-           : nvm_data(path + "/inplace2_data_file", sizeof(InplaceField<entry_size>) * entry_count)
+           : nvm_data(path + "/inplace_file", sizeof(InplaceField<entry_size>) * entry_count)
              , entry_count(entry_count)
    {
       std::vector<char> data(entry_size, 'a');

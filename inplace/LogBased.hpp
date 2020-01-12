@@ -142,8 +142,8 @@ struct LogBasedUpdates {
    UpdateOperation<entry_size> *data_on_nvm;
 
    LogBasedUpdates(const std::string &path, uint64_t entry_count)
-           : nvm_log(path + "/log_log_file", LOG_BUFFER_SIZE)
-             , nvm_data(path + "/log_data_file", entry_count * sizeof(UpdateOperation<entry_size>))
+           : nvm_log(path + "/logbased_log_file", LOG_BUFFER_SIZE)
+             , nvm_data(path + "/logbased_data_file", entry_count * sizeof(UpdateOperation<entry_size>))
              , log_writer(nvm_log)
              , entry_count(entry_count)
    {
@@ -154,6 +154,14 @@ struct LogBasedUpdates {
       pmem_persist(nvm_data.Data(), nvm_data.GetByteCount());
 
       data_on_nvm = (UpdateOperation<entry_size> *) nvm_data.Data();
+   }
+
+   ~LogBasedUpdates()
+   {
+      if (log_writer.GetWrittenByteCount()>=nvm_log.GetByteCount()) {
+         std::cout << "write more log than we had space.. not good" << std::endl;
+         exit(-1);
+      }
    }
 
    void DoUpdate(const UpdateOperation<entry_size> &op)

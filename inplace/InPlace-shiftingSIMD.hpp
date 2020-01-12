@@ -131,7 +131,7 @@ struct InPlaceLikeUpdates {
    InplaceField<entry_size> *entries;
 
    InPlaceLikeUpdates(const std::string &path, uint64_t entry_count)
-           : nvm_data(path + "/inplace3_data_file", sizeof(InplaceField<entry_size>) * entry_count)
+           : nvm_data(path + "/inplace_file", sizeof(InplaceField<entry_size>) * entry_count)
              , entry_count(entry_count)
    {
       std::vector<char> data(entry_size, 'a');
