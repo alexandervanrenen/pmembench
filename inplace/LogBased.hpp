@@ -134,7 +134,7 @@ struct LogWriterZeroCached {
 // -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct LogBasedUpdates {
-   const static uint64_t LOG_BUFFER_SIZE = 10e9;
+   const static uint64_t LOG_BUFFER_SIZE = 30e9;
    NonVolatileMemory nvm_log;
    NonVolatileMemory nvm_data;
    LogWriterZeroCached<entry_size> log_writer;

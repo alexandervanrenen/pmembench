@@ -1,9 +1,7 @@
-#include "InPlace-generic.hpp"
-#include "InPlace-highbits.hpp"
 #include "InPlace-highbitsSIMD.hpp"
 #include "InPlace-shifting.hpp"
-#include "InPlace-shiftingSIMD.hpp"
 #include "LogBased.hpp"
+#include "CowBased.hpp"
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -71,7 +69,7 @@ void RunExperiment(const std::string &competitor_name, vector<UpdateOperation<EN
         << endl;
    //@formatter:on
 
-   const bool VALIDATE = false;
+   const bool VALIDATE = true;
    if (VALIDATE) {
       vector<UpdateOperation<ENTRY_SIZE>> result(ENTRY_COUNT);
       competitor.ReadResult(result);
@@ -81,12 +79,12 @@ void RunExperiment(const std::string &competitor_name, vector<UpdateOperation<EN
       }
       if (log_result.size()>0) {
          if (log_result.size() != result.size()) {
-            cout << "validation failed !!" << endl;
+            cout << "validation failed (size) !!" << endl;
             throw;
          }
          for (uint64_t i = 0; i<log_result.size(); i++) {
             if (log_result[i] != result[i]) {
-               cout << "validation failed !!" << endl;
+               cout << "validation failed !! " << i << endl;
                throw;
             }
          }
@@ -147,17 +145,11 @@ int main(int argc, char **argv)
 
    // Run Experiments
    RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log-based", update_vec);
-   //   RunExperiment<v1::InPlaceLikeUpdates<ENTRY_SIZE>>("generic-loop", update_vec);
-   //      RunExperiment<v2::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits", update_vec);
+   RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow-based", update_vec);
    RunExperiment<v3::InPlaceLikeUpdates<ENTRY_SIZE>>("moving-version", update_vec);
    RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
-   //   RunExperiment<v2simd::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bits-simd(stef)", update_vec);
 
-   // TODO: CoW !!!!
-   //      CowBasedUpdates<ENTRY_SIZE> cow_based(NVM_PATH);
-   //      RunExperiment("cow", log_based, strings);
-
-   cout << "done 1" << endl;
+   cout << "done 2" << endl;
    return 0;
 }
 // -------------------------------------------------------------------------------------
