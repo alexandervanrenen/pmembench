@@ -67,7 +67,7 @@ inline ub8 alex_PopCount(ub8 value)
    return _mm_popcnt_u64(value);
 }
 // -------------------------------------------------------------------------------------
-inline void alex_StreamClToNvm(void *dest, void *src)
+inline void alex_StreamClToNvm(void *dest, const void *src)
 {
    assert(((ub8) dest) % 64 == 0);
    assert(((ub8) src) % 64 == 0);

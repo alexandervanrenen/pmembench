@@ -112,7 +112,7 @@ struct InplaceField {
    void WriteNoCheck(const char *data)
    {
       assert((uint64_t) data % 4 == 0);
-      assert((uint64_t) &blocks[0] % 64 == 0);
+      assert((uint64_t) &_blocks[0] % 64 == 0);
 
       WriteRec<BYTE_COUNT / 4>((uint32_t *) data, _blocks);
    }

@@ -41,6 +41,47 @@ struct InplaceCow {
    }
 };
 // -------------------------------------------------------------------------------------
+template<>
+struct InplaceCow<16> {
+   alignas(64) uint8_t active_version_id; // Start at a cl to allow the use of streaming ops
+   std::array<std::array<char, 16>, 2> versions;
+
+   void Write(const char *input)
+   {
+      assert((uint64_t) this % 64 == 0);
+      assert((uint64_t) input % 64 == 0);
+      assert((void *) &active_version_id == (void *) this);
+      assert(active_version_id == 0 || active_version_id == 1);
+
+      // Load cl and update
+      alignas(64) InplaceCow<16> cache = *this;
+      memcpy(cache.versions[cache.active_version_id ^ 0x1].data(), input, 16);
+
+      // Write new data
+      __m512i reg = _mm512_loadu_si512(&cache);
+      _mm512_stream_si512((__m512i *) this, reg);
+      alex_SFence();
+
+      // Update version id
+      __m512i mask = _mm512_castsi128_si512(_mm_cvtsi32_si128(0x01));
+      reg = _mm512_xor_si512(reg, mask);
+
+      // Write new version id
+      _mm512_stream_si512((__m512i *) this, reg);
+      alex_SFence();
+   }
+
+   void Read(char *output)
+   {
+      memcpy(output, versions[active_version_id].data(), 16);
+   }
+
+   void Init(Random &ranny)
+   {
+      active_version_id = ranny.Rand() % 2; // Make it so that the branch is ~50%
+   }
+};
+// -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct CowBasedUpdates {
    NonVolatileMemory nvm_data;
@@ -66,9 +107,6 @@ struct CowBasedUpdates {
    {
       assert(op.entry_id<entry_count);
       entries[op.entry_id].Write((const char *) &op);
-
-      Operation<entry_size> asd;
-      entries[op.entry_id].Read((char *) &asd);
    }
 
    uint64_t ReadSingleResult(Operation<entry_size> &result)
