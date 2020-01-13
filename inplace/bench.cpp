@@ -168,19 +168,19 @@ int main(int argc, char **argv)
    // Sequential Experiments
    if (SEQUENTIAL) {
       auto seq_operation_vec = PrepareSeqentialOperations();
-//      RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", seq_operation_vec);
+      RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", seq_operation_vec);
       RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow", seq_operation_vec);
-//      RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", seq_operation_vec);
-//      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", seq_operation_vec);
+      RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", seq_operation_vec);
+      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", seq_operation_vec);
    }
 
    // Random
    if (!SEQUENTIAL) {
       auto rand_operation_vec = PrepareRandomOperations();
-//      RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", rand_operation_vec);
+      RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", rand_operation_vec);
       RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow", rand_operation_vec);
-//      RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", rand_operation_vec);
-//      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", rand_operation_vec);
+      RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", rand_operation_vec);
+      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", rand_operation_vec);
    }
 
    cout << "done 3" << endl;

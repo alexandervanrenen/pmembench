@@ -7,5 +7,6 @@ COMPILE="clang++ -g0 -O3 -DNDEBUG=1 -march=native -std=c++17 inplace/bench.cpp -
 
 for ENTRY_SIZE in `seq 16 16 256`; do
   ${COMPILE} -DENTRY_SIZE=${ENTRY_SIZE} || exit -1
-  ./a.out 60e6 60e6 /mnt/pmem0/renen
+  ./a.out 100e6 100e6 seq /mnt/pmem0/renen
+  ./a.out 100e6 100e6 rnd /mnt/pmem0/renen
 done
