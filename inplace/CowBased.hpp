@@ -54,11 +54,14 @@ struct InplaceCow<16> {
       assert(active_version_id == 0 || active_version_id == 1);
 
       // Load cl and update
-      alignas(64) InplaceCow<16> cache = *this;
-      memcpy(cache.versions[cache.active_version_id ^ 0x1].data(), input, 16);
+      if (active_version_id == 0) {
+         memcpy(versions[1].data(), input, 16);
+      } else {
+         memcpy(versions[0].data(), input, 16);
+      }
 
       // Write new data
-      __m512i reg = _mm512_loadu_si512(&cache);
+      __m512i reg = _mm512_loadu_si512(this);
       _mm512_stream_si512((__m512i *) this, reg);
       alex_SFence();
 
