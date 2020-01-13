@@ -39,7 +39,7 @@ struct LogWriterZeroCached {
       memset((uint8_t *) active_cl, 0, 64);
    }
 
-   uint64_t AddLogEntry(const UpdateOperation<entry_size> &entry)
+   uint64_t AddLogEntry(const Operation<entry_size> &entry)
    {
       uint32_t blks = entry_size / 8;
 
@@ -139,11 +139,11 @@ struct LogBasedUpdates {
    NonVolatileMemory nvm_data;
    LogWriterZeroCached<entry_size> log_writer;
    uint64_t entry_count;
-   UpdateOperation<entry_size> *data_on_nvm;
+   Operation<entry_size> *data_on_nvm;
 
    LogBasedUpdates(const std::string &path, uint64_t entry_count)
            : nvm_log(path + "/logbased_log_file", LOG_BUFFER_SIZE)
-             , nvm_data(path + "/logbased_data_file", entry_count * sizeof(UpdateOperation<entry_size>))
+             , nvm_data(path + "/logbased_data_file", entry_count * sizeof(Operation<entry_size>))
              , log_writer(nvm_log)
              , entry_count(entry_count)
    {
@@ -153,7 +153,7 @@ struct LogBasedUpdates {
       memset(nvm_data.Data(), 'a', nvm_data.GetByteCount());
       pmem_persist(nvm_data.Data(), nvm_data.GetByteCount());
 
-      data_on_nvm = (UpdateOperation<entry_size> *) nvm_data.Data();
+      data_on_nvm = (Operation<entry_size> *) nvm_data.Data();
    }
 
    ~LogBasedUpdates()
@@ -164,18 +164,18 @@ struct LogBasedUpdates {
       }
    }
 
-   void DoUpdate(const UpdateOperation<entry_size> &op)
+   void DoUpdate(const Operation<entry_size> &op)
    {
       assert(op.entry_id<entry_count);
 
       log_writer.AddLogEntry(op);
 
-      ub1 *entry_begin = nvm_data.Data() + (op.entry_id * sizeof(UpdateOperation<entry_size>));
+      ub1 *entry_begin = nvm_data.Data() + (op.entry_id * sizeof(Operation<entry_size>));
       alex_FastCopyAndWriteBack(entry_begin, (ub1 *) &op, entry_size);
       alex_SFence();
    }
 
-   void ReadResult(std::vector<UpdateOperation<entry_size>> &result)
+   void ReadResult(std::vector<Operation<entry_size>> &result)
    {
       assert(result.size() == entry_count);
       for (uint64_t i = 0; i<entry_count; i++) {
@@ -183,7 +183,7 @@ struct LogBasedUpdates {
       }
    }
 
-   void ReadSingleResult(UpdateOperation<entry_size> &result)
+   void ReadSingleResult(Operation<entry_size> &result)
    {
       result = data_on_nvm[result.entry_id];
    }

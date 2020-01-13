@@ -196,17 +196,17 @@ char *CreateAlignedString(Random &ranny, uint32_t len)
 }
 // -------------------------------------------------------------------------------------
 template<uint64_t complete_size>
-struct UpdateOperation {
+struct Operation {
    alignas(64) uint64_t entry_id;
    std::array<char, complete_size - 8> data;
 };
 template<uint64_t complete_size>
-inline bool operator==(const UpdateOperation<complete_size> &lhs, const UpdateOperation<complete_size> &rhs)
+inline bool operator==(const Operation<complete_size> &lhs, const Operation<complete_size> &rhs)
 {
    return lhs.entry_id == rhs.entry_id && memcmp(lhs.data.data(), rhs.data.data(), complete_size - 8) == 0;
 }
 template<uint64_t complete_size>
-inline bool operator!=(const UpdateOperation<complete_size> &lhs, const UpdateOperation<complete_size> &rhs)
+inline bool operator!=(const Operation<complete_size> &lhs, const Operation<complete_size> &rhs)
 {
    return lhs.entry_id != rhs.entry_id || memcmp(lhs.data.data(), rhs.data.data(), complete_size - 8) != 0;
 }

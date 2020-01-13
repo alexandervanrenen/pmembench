@@ -14,103 +14,100 @@ using namespace std;
 #define ENTRY_SIZE 4
 #endif
 // -------------------------------------------------------------------------------------
-uint64_t UPDATE_COUNT;
+uint64_t OPERATION_COUNT;
 uint64_t ENTRY_COUNT;
 string NVM_PATH;
-vector<UpdateOperation<ENTRY_SIZE>> log_result;
+vector<Operation<ENTRY_SIZE>> log_result;
+const bool VALIDATE = false;
+bool SEQUENTIAL;
 // -------------------------------------------------------------------------------------
-template<class COMPETITOR>
-void RunExperiment(const std::string &competitor_name, vector<UpdateOperation<ENTRY_SIZE>> &updates)
+vector<Operation<ENTRY_SIZE>> PrepareSeqentialOperations()
 {
-   COMPETITOR competitor(NVM_PATH, ENTRY_COUNT);
-   Random ranny;
-
-   uint64_t updates_per_second;
-   uint64_t seq_reads_per_second;
-   uint64_t rand_reads_per_second;
-
-   {
-      auto begin_ts = chrono::high_resolution_clock::now();
-      for (uint64_t u = 0; u<UPDATE_COUNT; u++) {
-         competitor.DoUpdate(updates[u]);
-      }
-      auto end_ts = chrono::high_resolution_clock::now();
-      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
-      updates_per_second = (UPDATE_COUNT * 1e9) / ns;
-   }
-
-   {
-      auto begin_ts = chrono::high_resolution_clock::now();
-      vector<UpdateOperation<ENTRY_SIZE>> result(ENTRY_COUNT);
-      competitor.ReadResult(result);
-      auto end_ts = chrono::high_resolution_clock::now();
-      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
-      seq_reads_per_second = (ENTRY_COUNT * 1e9) / ns;
-   }
-
-   {
-      auto begin_ts = chrono::high_resolution_clock::now();
-      vector<UpdateOperation<ENTRY_SIZE>> result = updates;
-      for (uint64_t u = 0; u<UPDATE_COUNT; u++) {
-         competitor.ReadSingleResult(result[u]);
-      }
-      auto end_ts = chrono::high_resolution_clock::now();
-      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
-      rand_reads_per_second = (UPDATE_COUNT * 1e9) / ns;
-   }
-
-   //@formatter:off
-   cout << "res:"
-        << " technique: " << competitor_name
-        << " entry_size: " << ENTRY_SIZE
-        << " updates_per_second(M): " << updates_per_second  / 1000 / 1000.0
-        << " seq_read_per_second(M): " << seq_reads_per_second  / 1000 / 1000.0
-        << " rand_read_per_second(M): " << rand_reads_per_second  / 1000 / 1000.0
-        << endl;
-   //@formatter:on
-
-   const bool VALIDATE = true;
-   if (VALIDATE) {
-      vector<UpdateOperation<ENTRY_SIZE>> result(ENTRY_COUNT);
-      competitor.ReadResult(result);
-      if (competitor_name == "log") {
-         log_result = result;
-         return;
-      }
-      if (log_result.size()>0) {
-         if (log_result.size() != result.size()) {
-            cout << "validation failed (size) !!" << endl;
-            throw;
-         }
-         for (uint64_t i = 0; i<log_result.size(); i++) {
-            if (log_result[i] != result[i]) {
-               cout << "validation failed !! " << i << endl;
-               throw;
-            }
-         }
-         cout << "ok" << endl;
-      }
-   }
-}
-// -------------------------------------------------------------------------------------
-vector<UpdateOperation<ENTRY_SIZE>> PrepareUpdates()
-{
-   Random ranny;
-   std::vector<UpdateOperation<ENTRY_SIZE>> results(UPDATE_COUNT);
-   for (uint64_t i = 0; i<UPDATE_COUNT; i++) {
-      results[i].entry_id = ranny.Rand() % ENTRY_COUNT;
-      for (uint32_t j = 0; j<ENTRY_SIZE - 8; j += 8) {
-         *(uint64_t *) &results[i].data[j] = ranny.Rand();
-      }
+   std::vector<Operation<ENTRY_SIZE>> results(OPERATION_COUNT);
+   for (uint64_t i = 0; i<OPERATION_COUNT; i++) {
+      results[i].entry_id = (i + 1) % OPERATION_COUNT;
+      memset(results[i].data.data(), results[i].entry_id, results[i].data.size());
    }
 
    return results;
 }
 // -------------------------------------------------------------------------------------
+vector<Operation<ENTRY_SIZE>> PrepareRandomOperations()
+{
+   vector<Operation<ENTRY_SIZE>> results = PrepareSeqentialOperations();
+
+   // Shuffle
+   Random ranny;
+   for (uint64_t i = 0; i<OPERATION_COUNT; i++) {
+      uint64_t pos = ranny.Rand() % OPERATION_COUNT;
+      swap(results[i], results[pos]);
+   }
+
+   return results;
+}
+// -------------------------------------------------------------------------------------
+template<class COMPETITOR>
+void RunExperiment(const std::string &competitor_name, vector<Operation<ENTRY_SIZE>> &operations)
+{
+   vector<Operation<ENTRY_SIZE>> expected;
+   if (VALIDATE) {
+      expected = operations;
+   }
+
+   COMPETITOR competitor(NVM_PATH, ENTRY_COUNT);
+
+   uint64_t updates_per_second = 0;
+   uint64_t reads_per_second = 0;
+
+   {
+      auto begin_ts = chrono::high_resolution_clock::now();
+      for (uint64_t u = 0; u<OPERATION_COUNT; u++) {
+         competitor.DoUpdate(operations[u]);
+      }
+      auto end_ts = chrono::high_resolution_clock::now();
+      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+      updates_per_second = (OPERATION_COUNT * 1e9) / ns;
+   }
+
+   {
+      auto begin_ts = chrono::high_resolution_clock::now();
+      for (uint64_t u = 0; u<OPERATION_COUNT; u++) {
+         competitor.ReadSingleResult(operations[u]);
+      }
+      auto end_ts = chrono::high_resolution_clock::now();
+      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+      reads_per_second = (OPERATION_COUNT * 1e9) / ns;
+   }
+
+   //@formatter:off
+   cout << "res:"
+        << " technique: " << competitor_name
+        << " order: " << (SEQUENTIAL ? "seq" : "rand")
+        << " entry_size: " << ENTRY_SIZE
+        << " updates(M): " << updates_per_second  / 1000 / 1000.0
+        << " reads(M): " << reads_per_second  / 1000 / 1000.0
+        << endl;
+   //@formatter:on
+
+   if (VALIDATE) {
+      if (expected.size() != operations.size()) {
+         cout << "validation failed (size) !!" << endl;
+         throw;
+      }
+      for (uint64_t i = 0; i<expected.size(); i++) {
+         if (expected[i] != operations[i]) {
+            cout << "validation failed !! " << i << endl;
+            throw;
+         }
+      }
+      cout << "ok" << endl;
+   }
+}
+// -------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
-   if (argc != 4) {
-      cout << "usage: " << argv[0] << " update_count entry_count nvm_path" << endl;
+   if (argc != 5) {
+      cout << "usage: " << argv[0] << " operation_count entry_count [seq|rand] nvm_path" << endl;
       throw;
    }
 
@@ -121,33 +118,46 @@ int main(int argc, char **argv)
 
    // Config
    ENTRY_COUNT = atof(argv[1]);
-   UPDATE_COUNT = atof(argv[2]);
-   NVM_PATH = argv[3]; // Path to the nvm folder
+   OPERATION_COUNT = atof(argv[2]);
+   SEQUENTIAL = argv[3][0] == 's';
+   NVM_PATH = argv[4]; // Path to the nvm folder
 
    cout << "Config" << endl;
    cout << "------" << endl;
    cout << "entry_size         " << ENTRY_SIZE << endl;
    cout << "entry_count(M)     " << ENTRY_COUNT / 1000 / 1000.0 << endl;
    cout << "needed_data(GB)    " << ENTRY_COUNT * ENTRY_SIZE / 1000 / 1000 / 1000.0 << endl;
-   cout << "actual_data(GB)    " << ENTRY_COUNT * sizeof(UpdateOperation<ENTRY_SIZE>) / 1000 / 1000 / 1000.0 << endl;
-   cout << "update_count(M)    " << UPDATE_COUNT / 1000 / 1000.0 << endl;
+   cout << "actual_data(GB)    " << ENTRY_COUNT * sizeof(Operation<ENTRY_SIZE>) / 1000 / 1000 / 1000.0 << endl;
+   cout << "operation_count(M) " << OPERATION_COUNT / 1000 / 1000.0 << endl;
+   cout << "order              " << (SEQUENTIAL ? "sequential" : "random") << endl;
    cout << "nvm_path           " << NVM_PATH << endl;
    cout << "------" << endl;
-
-   auto update_vec = PrepareUpdates();
 
    cpu_set_t cpuset;
    CPU_ZERO(&cpuset);
    CPU_SET(0, &cpuset);
    pthread_t currentThread = pthread_self();
-   if (pthread_setaffinity_np(currentThread, sizeof(cpu_set_t), &cpuset) != 0)
+   if (pthread_setaffinity_np(currentThread, sizeof(cpu_set_t), &cpuset) != 0) {
       throw;
+   }
 
-   // Run Experiments
-   RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", update_vec);
-   RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow", update_vec);
-   RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", update_vec);
-   RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", update_vec);
+   // Sequential Experiments
+   if (SEQUENTIAL) {
+      auto seq_operation_vec = PrepareSeqentialOperations();
+      RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", seq_operation_vec);
+      RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow", seq_operation_vec);
+      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", seq_operation_vec);
+      RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", seq_operation_vec);
+   }
+
+   // Random
+   if (!SEQUENTIAL) {
+      auto rand_operation_vec = PrepareRandomOperations();
+      RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", rand_operation_vec);
+      RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow", rand_operation_vec);
+      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", rand_operation_vec);
+      RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", rand_operation_vec);
+   }
 
    cout << "done 3" << endl;
    return 0;

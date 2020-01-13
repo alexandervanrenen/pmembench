@@ -61,16 +61,16 @@ struct CowBasedUpdates {
       pmem_persist(nvm_data.Data(), nvm_data.GetByteCount());
    }
 
-   void DoUpdate(const UpdateOperation<entry_size> &op)
+   void DoUpdate(const Operation<entry_size> &op)
    {
       assert(op.entry_id<entry_count);
       entries[op.entry_id].Write((const char *) &op);
 
-      UpdateOperation<entry_size> asd;
+      Operation<entry_size> asd;
       entries[op.entry_id].Read((char *) &asd);
    }
 
-   void ReadResult(std::vector<UpdateOperation<entry_size>> &result)
+   void ReadResult(std::vector<Operation<entry_size>> &result)
    {
       assert(result.size() == entry_count);
       for (uint64_t i = 0; i<entry_count; i++) {
@@ -78,7 +78,7 @@ struct CowBasedUpdates {
       }
    }
 
-   void ReadSingleResult(UpdateOperation<entry_size> &result)
+   void ReadSingleResult(Operation<entry_size> &result)
    {
       entries[result.entry_id].Read((char *) &result);
    }

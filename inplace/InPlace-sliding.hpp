@@ -237,7 +237,7 @@ struct InPlaceLikeUpdates {
       }
    }
 
-   void DoUpdate(const UpdateOperation<entry_size> &op)
+   void DoUpdate(const Operation<entry_size> &op)
    {
       entries[op.entry_id].WriteNoCheck((const char *) &op);
       for (uint32_t i = 0; i<sizeof(InplaceField<entry_size>); i += 64) {
@@ -248,7 +248,7 @@ struct InPlaceLikeUpdates {
       alex_SFence();
    }
 
-   void ReadResult(std::vector<UpdateOperation<entry_size>> &result)
+   void ReadResult(std::vector<Operation<entry_size>> &result)
    {
       assert(result.size() == entry_count);
       for (uint64_t i = 0; i<entry_count; i++) {
@@ -256,7 +256,7 @@ struct InPlaceLikeUpdates {
       }
    }
 
-   void ReadSingleResult(UpdateOperation<entry_size> &result)
+   void ReadSingleResult(Operation<entry_size> &result)
    {
       entries[result.entry_id].ReadNoCheck((char *) &result);
    }
