@@ -8,7 +8,7 @@ template<uint32_t BYTE_COUNT>
 struct InplaceCow {
    alignas(64) bool is_a_active; // Start at a cl to allow the use of streaming ops
    alignas(64) std::array<char, BYTE_COUNT> a;
-   alignas(64) std::array<char, BYTE_COUNT> b; // Start at a cl to allow the use of streaming ops
+   std::array<char, BYTE_COUNT> b; // Start at a cl to allow the use of streaming ops
 
    void Write(const char *input)
    {
@@ -84,6 +84,66 @@ struct InplaceCow<16> {
       active_version_id = ranny.Rand() % 2; // Make it so that the branch is ~50%
    }
 };
+// -------------------------------------------------------------------------------------
+// 32 case is always 2 cls .. no chance to speed it up by packing the one version into the first cl
+// -------------------------------------------------------------------------------------
+template<>
+struct InplaceCow<48> {
+   alignas(64) uint8_t active_version_id; // Start at a cl to allow the use of streaming ops
+   std::array<char, 48> a;
+   alignas(64) std::array<char, 48> b;
+
+   void Write(const char *input)
+   {
+      assert((uint64_t) this % 64 == 0);
+      assert((uint64_t) input % 64 == 0);
+      assert((void *) &active_version_id == (void *) this);
+      assert(active_version_id == 0 || active_version_id == 1);
+
+      // Load cl and update
+      if (active_version_id == 0) {
+         // Version and data on different cls -> use clwb, cause no need for streaming
+         alex_FastCopyAndWriteBack((ub1 *) b.data(), (const ub1 *) input, 48);
+         alex_SFence();
+
+         active_version_id = active_version_id ^ 0x1;
+         alex_WriteBack(&active_version_id);
+         alex_SFence();
+      } else {
+         // Version and data both on first cl -> use streaming, because this cache line is re-written
+         memcpy(a.data(), input, 48);
+
+         // Write new data
+         __m512i reg = _mm512_loadu_si512(this);
+         _mm512_stream_si512((__m512i *) this, reg);
+         alex_SFence();
+
+         // Update version id
+         __m512i mask = _mm512_castsi128_si512(_mm_cvtsi32_si128(0x01));
+         reg = _mm512_xor_si512(reg, mask);
+
+         // Write new version id
+         _mm512_stream_si512((__m512i *) this, reg);
+         alex_SFence();
+      }
+   }
+
+   void Read(char *output)
+   {
+      if (active_version_id == 0) {
+         memcpy(output, a.data(), 48);
+      } else {
+         memcpy(output, b.data(), 48);
+      }
+   }
+
+   void Init(Random &ranny)
+   {
+      active_version_id = ranny.Rand() % 2; // Make it so that the branch is ~50%
+   }
+};
+// -------------------------------------------------------------------------------------
+// For larger sizes it matters less and less ..
 // -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct CowBasedUpdates {
