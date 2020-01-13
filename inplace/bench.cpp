@@ -26,7 +26,7 @@ vector<Operation<ENTRY_SIZE>> PrepareSeqentialOperations()
    std::vector<Operation<ENTRY_SIZE>> results(OPERATION_COUNT);
    for (uint64_t i = 0; i<OPERATION_COUNT; i++) {
       results[i].entry_id = (i + 1) % OPERATION_COUNT;
-      memset(results[i].data.data(), results[i].entry_id, results[i].data.size());
+      memset(results[i].data.data(), (char) i, results[i].data.size());
    }
 
    return results;
@@ -34,13 +34,24 @@ vector<Operation<ENTRY_SIZE>> PrepareSeqentialOperations()
 // -------------------------------------------------------------------------------------
 vector<Operation<ENTRY_SIZE>> PrepareRandomOperations()
 {
-   vector<Operation<ENTRY_SIZE>> results = PrepareSeqentialOperations();
+   // Init
+   uint64_t *helper = new uint64_t[OPERATION_COUNT];
+   for (uint64_t i = 0; i<OPERATION_COUNT; i++) {
+      helper[i] = i;
+   }
 
    // Shuffle
    Random ranny;
    for (uint64_t i = 0; i<OPERATION_COUNT; i++) {
-      uint64_t pos = ranny.Rand() % OPERATION_COUNT;
-      swap(results[i], results[pos]);
+      swap(helper[i], helper[ranny.Rand() % OPERATION_COUNT]);
+   }
+
+   // Assign
+   std::vector<Operation<ENTRY_SIZE>> results;
+   results.reserve(OPERATION_COUNT);
+   for (uint64_t i = 0; i<OPERATION_COUNT; i++) {
+      results[helper[i]].entry_id = helper[(i + 1) % OPERATION_COUNT];
+      memset(results[i].data.data(), (char) i, results[i].data.size());
    }
 
    return results;
@@ -58,6 +69,7 @@ void RunExperiment(const std::string &competitor_name, vector<Operation<ENTRY_SI
 
    uint64_t updates_per_second = 0;
    uint64_t reads_per_second = 0;
+   uint64_t dep_reads_per_second = 0;
 
    {
       auto begin_ts = chrono::high_resolution_clock::now();
@@ -71,12 +83,23 @@ void RunExperiment(const std::string &competitor_name, vector<Operation<ENTRY_SI
 
    {
       auto begin_ts = chrono::high_resolution_clock::now();
+      uint64_t next_id = 0;
+      for (uint64_t u = 0; u<OPERATION_COUNT; u++) {
+         next_id = competitor.ReadSingleResult(operations[next_id]);
+      }
+      auto end_ts = chrono::high_resolution_clock::now();
+      uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+      reads_per_second = (OPERATION_COUNT * 1e9) / ns;
+   }
+
+   {
+      auto begin_ts = chrono::high_resolution_clock::now();
       for (uint64_t u = 0; u<OPERATION_COUNT; u++) {
          competitor.ReadSingleResult(operations[u]);
       }
       auto end_ts = chrono::high_resolution_clock::now();
       uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
-      reads_per_second = (OPERATION_COUNT * 1e9) / ns;
+      dep_reads_per_second = (OPERATION_COUNT * 1e9) / ns;
    }
 
    //@formatter:off
@@ -84,8 +107,9 @@ void RunExperiment(const std::string &competitor_name, vector<Operation<ENTRY_SI
         << " technique: " << competitor_name
         << " order: " << (SEQUENTIAL ? "seq" : "rand")
         << " entry_size: " << ENTRY_SIZE
-        << " updates(M): " << updates_per_second  / 1000 / 1000.0
-        << " reads(M): " << reads_per_second  / 1000 / 1000.0
+        << " updates(M): " << updates_per_second / 1000 / 1000.0
+        << " reads(M): " << reads_per_second / 1000 / 1000.0
+        << " dep_reads(M): " << dep_reads_per_second / 1000 / 1000.0
         << endl;
    //@formatter:on
 
@@ -146,8 +170,8 @@ int main(int argc, char **argv)
       auto seq_operation_vec = PrepareSeqentialOperations();
       RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", seq_operation_vec);
       RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow", seq_operation_vec);
-      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", seq_operation_vec);
       RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", seq_operation_vec);
+      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", seq_operation_vec);
    }
 
    // Random
@@ -155,8 +179,8 @@ int main(int argc, char **argv)
       auto rand_operation_vec = PrepareRandomOperations();
       RunExperiment<LogBasedUpdates<ENTRY_SIZE>>("log", rand_operation_vec);
       RunExperiment<cow::CowBasedUpdates<ENTRY_SIZE>>("cow", rand_operation_vec);
-      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", rand_operation_vec);
       RunExperiment<high::InPlaceLikeUpdates<ENTRY_SIZE>>("high-bit", rand_operation_vec);
+      RunExperiment<sliding::InPlaceLikeUpdates<ENTRY_SIZE>>("sliding-bit", rand_operation_vec);
    }
 
    cout << "done 3" << endl;

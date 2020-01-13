@@ -6,9 +6,9 @@ namespace cow {
 // -------------------------------------------------------------------------------------
 template<uint32_t BYTE_COUNT>
 struct InplaceCow {
-   alignas(64) bool is_a_active;
+   alignas(64) bool is_a_active; // Start at a cl to allow the use of streaming ops
    alignas(64) std::array<char, BYTE_COUNT> a;
-   alignas(64) std::array<char, BYTE_COUNT> b;
+   alignas(64) std::array<char, BYTE_COUNT> b; // Start at a cl to allow the use of streaming ops
 
    void Write(const char *input)
    {
@@ -35,9 +35,9 @@ struct InplaceCow {
       }
    }
 
-   void Init()
+   void Init(Random &ranny)
    {
-      is_a_active = true;
+      is_a_active = true; // ranny.Rand() % 2; // Make it so that the branch is ~50%
    }
 };
 // -------------------------------------------------------------------------------------
@@ -55,8 +55,9 @@ struct CowBasedUpdates {
 
       memset(nvm_data.Data(), 'a', nvm_data.GetByteCount());
       entries = (InplaceCow<entry_size> *) nvm_data.Data();
+      Random ranny;
       for (uint32_t i = 0; i<entry_count; i++) {
-         entries[i].Init();
+         entries[i].Init(ranny);
       }
       pmem_persist(nvm_data.Data(), nvm_data.GetByteCount());
    }
@@ -70,17 +71,10 @@ struct CowBasedUpdates {
       entries[op.entry_id].Read((char *) &asd);
    }
 
-   void ReadResult(std::vector<Operation<entry_size>> &result)
-   {
-      assert(result.size() == entry_count);
-      for (uint64_t i = 0; i<entry_count; i++) {
-         entries[i].Read((char *) &result[i]);
-      }
-   }
-
-   void ReadSingleResult(Operation<entry_size> &result)
+   uint64_t ReadSingleResult(Operation<entry_size> &result)
    {
       entries[result.entry_id].Read((char *) &result);
+      return result.entry_id;
    }
 };
 // -------------------------------------------------------------------------------------

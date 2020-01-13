@@ -58,7 +58,7 @@ struct LogWriterZeroCached {
          cl_pos++;
 
          if (cl_pos % 8 == 0) {
-            alex_FlushClToNvm(nvm_begin, (uint8_t *) active_cl);
+            alex_StreamClToNvm(nvm_begin, (uint8_t *) active_cl);
             memset((uint8_t *) active_cl, 0, 64);
             cl_pos = 0;
             nvm_begin += 64;
@@ -91,7 +91,7 @@ struct LogWriterZeroCached {
          active_cl[7] = ram_begin[pos + 7];
          pop_cnt += alex_PopCount(ram_begin[pos + 7]);
 
-         alex_FlushClToNvm(nvm_begin, (uint8_t *) active_cl);
+         alex_StreamClToNvm(nvm_begin, (uint8_t *) active_cl);
          memset((uint8_t *) active_cl, 0, 64);
          cl_pos = 0;
          nvm_begin += 64;
@@ -112,7 +112,7 @@ struct LogWriterZeroCached {
 
       active_cl[cl_pos] = pop_cnt;
       cl_pos++;
-      alex_FlushClToNvm(nvm_begin, (uint8_t *) active_cl);
+      alex_StreamClToNvm(nvm_begin, (uint8_t *) active_cl);
       alex_SFence();
 
       if (cl_pos % 8 == 0) {
@@ -134,7 +134,7 @@ struct LogWriterZeroCached {
 // -------------------------------------------------------------------------------------
 template<uint32_t entry_size>
 struct LogBasedUpdates {
-   const static uint64_t LOG_BUFFER_SIZE = 30e9;
+   const static uint64_t LOG_BUFFER_SIZE = 50e9;
    NonVolatileMemory nvm_log;
    NonVolatileMemory nvm_data;
    LogWriterZeroCached<entry_size> log_writer;
@@ -175,17 +175,10 @@ struct LogBasedUpdates {
       alex_SFence();
    }
 
-   void ReadResult(std::vector<Operation<entry_size>> &result)
-   {
-      assert(result.size() == entry_count);
-      for (uint64_t i = 0; i<entry_count; i++) {
-         result[i] = data_on_nvm[i];
-      }
-   }
-
-   void ReadSingleResult(Operation<entry_size> &result)
+   uint64_t ReadSingleResult(Operation<entry_size> &result)
    {
       result = data_on_nvm[result.entry_id];
+      return result.entry_id;
    }
 };
 // -------------------------------------------------------------------------------------

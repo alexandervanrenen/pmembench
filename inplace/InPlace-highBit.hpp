@@ -143,17 +143,10 @@ struct InPlaceLikeUpdates {
       alex_SFence();
    }
 
-   void ReadResult(std::vector<Operation<entry_size>> &result)
-   {
-      assert(result.size() == entry_count);
-      for (uint64_t i = 0; i<entry_count; i++) {
-         entries[i].ReadNoCheck((char *) &result[i]);
-      }
-   }
-
-   void ReadSingleResult(Operation<entry_size> &result)
+   uint64_t ReadSingleResult(Operation<entry_size> &result)
    {
       entries[result.entry_id].ReadNoCheck((char *) &result);
+      return result.entry_id;
    }
 };
 // -------------------------------------------------------------------------------------

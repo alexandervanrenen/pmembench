@@ -229,11 +229,15 @@ struct InPlaceLikeUpdates {
            : nvm_data(path + "/inplace2_file", sizeof(InplaceField<entry_size>) * entry_count)
              , entry_count(entry_count)
    {
+      Random ranny;
       std::vector<char> data(entry_size, 'a');
       entries = (InplaceField<entry_size> *) nvm_data.Data();
       for (uint64_t i = 0; i<entry_count; i++) {
          entries[i].Reset();
          entries[i].WriteNoCheck(data.data());
+         if (ranny.Rand() % 2 == 0) {
+            entries[i].WriteNoCheck(data.data()); // Make it so that the branch is ~50%
+         }
       }
    }
 
@@ -248,17 +252,10 @@ struct InPlaceLikeUpdates {
       alex_SFence();
    }
 
-   void ReadResult(std::vector<Operation<entry_size>> &result)
-   {
-      assert(result.size() == entry_count);
-      for (uint64_t i = 0; i<entry_count; i++) {
-         entries[i].ReadNoCheck((char *) &result[i]);
-      }
-   }
-
-   void ReadSingleResult(Operation<entry_size> &result)
+   uint64_t ReadSingleResult(Operation<entry_size> &result)
    {
       entries[result.entry_id].ReadNoCheck((char *) &result);
+      return result.entry_id;
    }
 };
 // -------------------------------------------------------------------------------------
