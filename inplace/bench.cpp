@@ -16,6 +16,7 @@ using namespace std;
 // -------------------------------------------------------------------------------------
 uint64_t OPERATION_COUNT;
 uint64_t ENTRY_COUNT;
+uint64_t DATA_SIZE;
 string NVM_PATH;
 vector<Operation<ENTRY_SIZE>> log_result;
 const bool VALIDATE = false;
@@ -131,7 +132,7 @@ void RunExperiment(const std::string &competitor_name, vector<Operation<ENTRY_SI
 int main(int argc, char **argv)
 {
    if (argc != 5) {
-      cout << "usage: " << argv[0] << " operation_count entry_count [seq|rand] nvm_path" << endl;
+      cout << "usage: " << argv[0] << " operation_count data_size [seq|rand] nvm_path" << endl;
       throw;
    }
 
@@ -141,14 +142,16 @@ int main(int argc, char **argv)
    }
 
    // Config
-   ENTRY_COUNT = atof(argv[1]);
+   DATA_SIZE = atof(argv[1]);
    OPERATION_COUNT = atof(argv[2]);
    SEQUENTIAL = argv[3][0] == 's';
    NVM_PATH = argv[4]; // Path to the nvm folder
+   ENTRY_COUNT = DATA_SIZE / ENTRY_SIZE;
 
    cout << "Config" << endl;
    cout << "------" << endl;
    cout << "entry_size         " << ENTRY_SIZE << endl;
+   cout << "data_size          " << DATA_SIZE << endl;
    cout << "entry_count(M)     " << ENTRY_COUNT / 1000 / 1000.0 << endl;
    cout << "needed_data(GB)    " << ENTRY_COUNT * ENTRY_SIZE / 1000 / 1000 / 1000.0 << endl;
    cout << "actual_data(GB)    " << ENTRY_COUNT * sizeof(Operation<ENTRY_SIZE>) / 1000 / 1000 / 1000.0 << endl;
