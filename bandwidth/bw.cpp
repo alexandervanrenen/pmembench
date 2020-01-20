@@ -88,18 +88,21 @@ int main(int argc, char **argv)
          // Init data ----------------------------------------------
          uint8_t *keys;
          if (use_ram) {
-            keys = new uint8_t[chunk_size + 64];
-            while (((uint64_t) keys) % 64 != 0) // Align to 64 byte
-               keys++;
+            keys = new uint8_t[chunk_size + block_size];
          } else {
             int fd = open((PATH + "/file_" + to_string(t)).c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-            int td = ftruncate(fd, chunk_size);
+            int td = ftruncate(fd, chunk_size + block_size);
             if (fd<0 || td<0) {
                cout << "unable to create file" << endl;
                exit(-1);
             }
-            keys = (uint8_t *) mmap(nullptr, chunk_size, PROT_WRITE, MAP_SHARED, fd, 0);
+            keys = (uint8_t *) mmap(nullptr, chunk_size + block_size, PROT_WRITE, MAP_SHARED, fd, 0);
          }
+         // Align to 'block_size' byte
+         while (((uint64_t) keys) % block_size != 0) {
+            keys++;
+         }
+
          assert(((uint64_t) keys) % 64 == 0);
          memset(keys, 'a', chunk_size);
          uint64_t *random_offsets = new uint64_t[iteration_count];
