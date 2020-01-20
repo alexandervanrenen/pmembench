@@ -290,9 +290,14 @@ void Node_Insert_Normal(Node *node, uint64_t key, uint64_t value)
    node->entries[slot].key = key;
    node->entries[slot].value = value;
    node->fingerprints[slot] = FingerprintHash(key);
+   Clwb(&node->entries[slot].key);
+   Clwb(&node->fingerprints[slot]);
+   SFence();
 
    // Set new entry valid and persist
    Node_SetSlotAsUsed(node, slot);
+   Clwb(&node->free_bits);
+   SFence();
 }
 // -------------------------------------------------------------------------------------
 void DoInsertsNormal(Node *nodes, const vector<uint32_t> &operations)
@@ -414,10 +419,14 @@ Task<int> Node_InsertCoroRead(Node *node, uint64_t key, uint64_t value, Schedule
    node->fingerprints[slot] = FingerprintHash(key);
 
    // 3. Write back
-
+   Clwb(&node->entries[slot].key);
+   Clwb(&node->fingerprints[slot]);
+   SFence();
 
    // 4. Set new entry valid and persist
    Node_SetSlotAsUsed(node, slot);
+   Clwb(&node->free_bits);
+   SFence();
 
    //@formatter:off
    co_return 1;
@@ -652,8 +661,8 @@ int main(int argc, char **argv)
    Node *nodes = CreateNodes(0);
    DoExperiment(nodes, operations, "scalar", DoInsertsNormal);
    DoExperiment(nodes, operations, "coro_read", DoInsertsCoroRead);
-//   DoExperiment(nodes, operations, "coro_write", DoInsertsCoroWrite);
-//   DoExperiment(nodes, operations, "coro_full", DoInsertsCoroFull);
+   DoExperiment(nodes, operations, "coro_write", DoInsertsCoroWrite);
+   DoExperiment(nodes, operations, "coro_full", DoInsertsCoroFull);
 
    return 0;
 }
