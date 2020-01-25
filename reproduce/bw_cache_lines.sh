@@ -5,7 +5,7 @@
 
 echo "" > results/bw_cache_lines.txt
 
-COMPILE="clang++ -g0 -O3 -march=native -std=c++14 bandwidth/bw.cpp -pthread"
+COMPILE="clang++ -g0 -O3 -march=native -std=c++14 -DNDEBUG=1 bandwidth/bw.cpp -pthread"
 
 BYTE_COUNT=10e9
 THREAD_COUNT=24

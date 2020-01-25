@@ -8,7 +8,7 @@ echo "" > results/page_flush_cls_1t.txt
 echo "" > results/page_flush_threads_16cls.txt
 echo "" > results/page_flush_cls_7t.txt
 
-clang++ page_flush/page_flush.cpp -std=c++17 -g0 -O3  -march=native -DNDEBUG -DSTREAMING=1 -Invml/src/include/ nvml/src/nondebug/libpmem.a nvml/src/nondebug/libpmemblk.a -lpthread -lndctl -ldaxctl || exit
+clang++ page_flush/page_flush.cpp -std=c++17 -g0 -O3  -march=native -DNDEBUG=1 -DSTREAMING=1 -Invml/src/include/ nvml/src/nondebug/libpmem.a nvml/src/nondebug/libpmemblk.a -lpthread -lndctl -ldaxctl || exit
 
 # Experiment 1: 1 thread, _x_ dirty cls, streaming
 THREAD_COUNT=1
