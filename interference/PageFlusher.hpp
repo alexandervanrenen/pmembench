@@ -14,24 +14,7 @@
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
-namespace {
-// -------------------------------------------------------------------------------------
-inline void alex_WriteBack(void *addr, ub4 len)
-{
-   for (uintptr_t uptr = (uintptr_t) addr & ~(64 - 1); uptr<(uintptr_t) addr + len; uptr += 64)
-           a_mm_clwb((char *) uptr);
-}
-// -------------------------------------------------------------------------------------
-inline void alex_WriteBack(void *addr)
-{
-   addr = (ub1 *) ((uintptr_t) addr & ~(64 - 1));
-   a_mm_clwb((char *) addr);
-}
-// -------------------------------------------------------------------------------------
-inline void alex_SFence()
-{
-   _mm_sfence();
-}
+namespace pf_utils {
 // -------------------------------------------------------------------------------------
 inline void alex_CopyAndFlush512(void *dest, void *src)
 {
@@ -357,7 +340,7 @@ NvmBufferFrame *FullBufferFrame::FlushShadow(NvmBufferFrame *new_nvm_bf, ub8 pvn
       for (ub4 cl_id = 0; cl_id<constants::kCacheLinesPerPage; cl_id++) {
          ub1 *src = aligned_page.GetPage().Ptr() + (cl_id * constants::kCacheLineByteCount);
          ub1 *dest = new_nvm_bf->GetPage().Ptr() + (cl_id * constants::kCacheLineByteCount);
-         alex_CopyAndFlush512(dest, src);
+         pf_utils::alex_CopyAndFlush512(dest, src);
       }
    } else {
       assert(!all_dirty && !dirty.all()); // -> otherwise, everything would have been resident as well
@@ -368,19 +351,19 @@ NvmBufferFrame *FullBufferFrame::FlushShadow(NvmBufferFrame *new_nvm_bf, ub8 pvn
       for (ub4 cl_id = 0; cl_id<constants::kCacheLinesPerPage; cl_id += 4) {
          ub1 *src0 = (resident.test(cl_id + 0) ? aligned_page.GetPage().Ptr() : old_nvm_bf->GetPage().Ptr()) + ((cl_id + 0) * constants::kCacheLineByteCount);
          ub1 *dest0 = new_nvm_bf->GetPage().Ptr() + ((cl_id + 0) * constants::kCacheLineByteCount);
-         alex_CopyAndFlush512(dest0, src0);
+         pf_utils::alex_CopyAndFlush512(dest0, src0);
 
          ub1 *src1 = (resident.test(cl_id + 1) ? aligned_page.GetPage().Ptr() : old_nvm_bf->GetPage().Ptr()) + ((cl_id + 1) * constants::kCacheLineByteCount);
          ub1 *dest1 = new_nvm_bf->GetPage().Ptr() + ((cl_id + 1) * constants::kCacheLineByteCount);
-         alex_CopyAndFlush512(dest1, src1);
+         pf_utils::alex_CopyAndFlush512(dest1, src1);
 
          ub1 *src2 = (resident.test(cl_id + 2) ? aligned_page.GetPage().Ptr() : old_nvm_bf->GetPage().Ptr()) + ((cl_id + 2) * constants::kCacheLineByteCount);
          ub1 *dest2 = new_nvm_bf->GetPage().Ptr() + ((cl_id + 2) * constants::kCacheLineByteCount);
-         alex_CopyAndFlush512(dest2, src2);
+         pf_utils::alex_CopyAndFlush512(dest2, src2);
 
          ub1 *src3 = (resident.test(cl_id + 3) ? aligned_page.GetPage().Ptr() : old_nvm_bf->GetPage().Ptr()) + ((cl_id + 3) * constants::kCacheLineByteCount);
          ub1 *dest3 = new_nvm_bf->GetPage().Ptr() + ((cl_id + 3) * constants::kCacheLineByteCount);
-         alex_CopyAndFlush512(dest3, src3);
+         pf_utils::alex_CopyAndFlush512(dest3, src3);
       }
    }
    alex_SFence();

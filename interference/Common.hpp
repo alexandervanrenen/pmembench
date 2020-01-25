@@ -69,3 +69,26 @@ uint8_t *AlignedAlloc(uint64_t alignment, uint64_t size)
    return reinterpret_cast<uint8_t *>(result);
 }
 // -------------------------------------------------------------------------------------
+inline void alex_FlushOpt(void *addr)
+{
+   a_mm_clflushopt((char *) addr);
+}
+// -------------------------------------------------------------------------------------
+inline void alex_WriteBack(void *addr, ub4 len)
+{
+   for (uintptr_t uptr = (uintptr_t) addr & ~(64 - 1); uptr<(uintptr_t) addr + len; uptr += 64) {
+      a_mm_clwb((char *) uptr);
+   }
+}
+// -------------------------------------------------------------------------------------
+inline void alex_WriteBack(void *addr)
+{
+   addr = (ub1 *) ((uintptr_t) addr & ~(64 - 1));
+   a_mm_clwb((char *) addr);
+}
+// -------------------------------------------------------------------------------------
+inline void alex_SFence()
+{
+   _mm_sfence();
+}
+// -------------------------------------------------------------------------------------
