@@ -5,6 +5,7 @@ using namespace std;
 int main(int argc, char **argv)
 {
    ub8 PAGE_COUNT_PER_THREAD = 625000;
+   ub8 PAGE_FLUSH_THREADS = 1;
    string NVM_PATH = "";
 
    if (argc != 2) {
@@ -27,18 +28,18 @@ int main(int argc, char **argv)
    vector<unique_ptr<PageFlusher>> page_flushers;
    vector<unique_ptr<thread>> page_flusher_threads;
 
-   for (ub4 i = 0; i<2; i++) {
+   for (ub4 i = 0; i<PAGE_FLUSH_THREADS; i++) {
       page_flushers.emplace_back(make_unique<PageFlusher>(NVM_PATH + "/page_flush_" + to_string(i), PAGE_COUNT_PER_THREAD));
       page_flusher_threads.emplace_back(make_unique<thread>([&, i]() {
          page_flushers[i]->Run(i);
       }));
    }
 
-   for (ub4 i = 0; i<2; i++) {
+   for (ub4 i = 0; i<PAGE_FLUSH_THREADS; i++) {
       while (!page_flushers[i]->ready);
    }
 
-   for (ub4 i = 0; i<2; i++) {
+   for (ub4 i = 0; i<PAGE_FLUSH_THREADS; i++) {
       page_flushers[i]->run = true;
    }
 

@@ -501,8 +501,12 @@ public:
       }
 
       while (!stop) {
+         auto begin = chrono::high_resolution_clock::now();
          FlushAll();
-         cout << "one iter " << thread_id << "!!" << endl;
+         auto end = chrono::high_resolution_clock::now();
+         double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
+
+         cout << thread_id << " -> " << (page_count / (ns / 1e9)) << endl;
       }
    }
 
@@ -543,7 +547,8 @@ private:
       free_nvm_bf->page_id = constants::kInvalidPageId;
 
       for (ub4 p = 0; p<page_count; ++p) {
-         GetRamBf(p)->dirty = true;
+         GetRamBf(p)->all_dirty = true;
+         GetRamBf(p)->all_resident = true;
          NvmBufferFrame *new_free_one = GetRamBf(p)->FlushShadow(free_nvm_bf, lsn++);
          assert(GetRamBf(p)->GetNvmBufferFrame() == free_nvm_bf);
          free_nvm_bf = new_free_one;
