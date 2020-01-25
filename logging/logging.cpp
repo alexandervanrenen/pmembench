@@ -364,7 +364,6 @@ int main(int argc, char **argv)
       {
          LogWriterMnemosyne wal(nvm);
          vector<LogWriterMnemosyne::Entry *> entries = LogWriterMnemosyne::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
-         cout << "entry_count: " << entries.size() << endl;
          ub8 ns_spend = RunWithTiming([&]() {
             for (LogWriterMnemosyne::Entry *entry : entries) {
                wal.AddLogEntry(*entry);
