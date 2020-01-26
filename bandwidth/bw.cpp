@@ -75,6 +75,7 @@ int main(int argc, char **argv)
 
    atomic<int> start_barrier(0);
    atomic<uint64_t> global_iterations(0);
+   atomic<uint64_t> global_counter(0);
    atomic<bool> running_flag(true);
 
    for (int t = 0; t<thread_count; t++) { // Spawn threads
@@ -122,6 +123,7 @@ int main(int argc, char **argv)
             for (uint64_t idx = 0; idx<iteration_count; idx++) {
                if (!running_flag) {
                   assert(local_counter);
+                  global_counter += local_counter;
                   global_iterations += idx + local_iteration;
                   return;
                }
@@ -151,7 +153,6 @@ int main(int argc, char **argv)
    start_barrier++;
    while (start_barrier != thread_count + 1) {
    }
-   //   cout << "start .." << endl;
    auto start = chrono::high_resolution_clock::now();
    usleep(20000000);
    auto end = chrono::high_resolution_clock::now();
@@ -171,6 +172,7 @@ int main(int argc, char **argv)
              << " thread_count: " << thread_count
              << " total_size: " << total_size
              << " block_size: " << BLOCK_SIZE
+             << " global_counter: " << global_counter
              << " sum(GB/s): " << gbs << std::endl;
    //@formatter:on
 
