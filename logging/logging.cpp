@@ -30,6 +30,7 @@ const static ub8 GIGA = 1024 * 1024 * 1024;
 #include "LW_ZeroSimd.hpp"
 #include "LW_ZeroCached.hpp"
 #include "LW_Mnemosyne.hpp"
+#include "LW_MnemosyneAligned.hpp"
 
 namespace {
 
@@ -246,21 +247,21 @@ int main(int argc, char **argv)
       //      }
 
       // Header aligned dancing
-      {
-         LogWriterHeaderAlignedDancing wal(nvm);
-         vector<LogWriterHeaderAlignedDancing::Entry *> entries = LogWriterHeaderAlignedDancing::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
-         ub8 ns_spend = RunWithTiming([&]() {
-            for (LogWriterHeaderAlignedDancing::Entry *entry : entries) {
-               wal.AddLogEntry(*entry);
-            }
-         });
-         if (TABLE_VIEW) {
-            printf("%20f", ns_spend * 1.0 / entries.size());
-            fflush(stdout);
-         } else {
-            PrintResult("headerAligDanc", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
-         }
-      }
+      //      {
+      //         LogWriterHeaderAlignedDancing wal(nvm);
+      //         vector<LogWriterHeaderAlignedDancing::Entry *> entries = LogWriterHeaderAlignedDancing::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+      //         ub8 ns_spend = RunWithTiming([&]() {
+      //            for (LogWriterHeaderAlignedDancing::Entry *entry : entries) {
+      //               wal.AddLogEntry(*entry);
+      //            }
+      //         });
+      //         if (TABLE_VIEW) {
+      //            printf("%20f", ns_spend * 1.0 / entries.size());
+      //            fflush(stdout);
+      //         } else {
+      //            PrintResult("headerAligDanc", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
+      //         }
+      //      }
 
       // Zero
       {
@@ -331,34 +332,34 @@ int main(int argc, char **argv)
       //      }
 
       // Zero cached
-      {
-         LogWriterZeroCached wal(nvm);
-         vector<LogWriterZeroCached::Entry *> entries = LogWriterZeroCached::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
-         ub8 ns_spend = RunWithTiming([&]() {
-            for (LogWriterZeroCached::Entry *entry : entries) {
-               wal.AddLogEntry(*entry);
-            }
-         });
-         if (TABLE_VIEW) {
-            printf("%20f", ns_spend * 1.0 / entries.size());
-            fflush(stdout);
-         } else {
-            PrintResult("zeroCached", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
-         }
-
-         // Validation code
-         //         for (LogWriterZeroCached::Entry *entry : entries) {
-         //            auto entry2 = wal.GetNextLogEntry();
-         //            if (entry->payload_size != entry2->payload_size) {
-         //               cout << "length missmatch !! " << entry->payload_size << " vs " << entry2->payload_size << endl;
-         //               throw;
-         //            }
-         //            if (memcmp(entry->data, entry2->data, entry->payload_size) != 0) {
-         //               cout << "data missmatch !!" << endl;
-         //               throw;
-         //            }
-         //         }
-      }
+      //      {
+      //         LogWriterZeroCached wal(nvm);
+      //         vector<LogWriterZeroCached::Entry *> entries = LogWriterZeroCached::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+      //         ub8 ns_spend = RunWithTiming([&]() {
+      //            for (LogWriterZeroCached::Entry *entry : entries) {
+      //               wal.AddLogEntry(*entry);
+      //            }
+      //         });
+      //         if (TABLE_VIEW) {
+      //            printf("%20f", ns_spend * 1.0 / entries.size());
+      //            fflush(stdout);
+      //         } else {
+      //            PrintResult("zeroCached", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
+      //         }
+      //
+      //         // Validation code
+      //         //         for (LogWriterZeroCached::Entry *entry : entries) {
+      //         //            auto entry2 = wal.GetNextLogEntry();
+      //         //            if (entry->payload_size != entry2->payload_size) {
+      //         //               cout << "length missmatch !! " << entry->payload_size << " vs " << entry2->payload_size << endl;
+      //         //               throw;
+      //         //            }
+      //         //            if (memcmp(entry->data, entry2->data, entry->payload_size) != 0) {
+      //         //               cout << "data missmatch !!" << endl;
+      //         //               throw;
+      //         //            }
+      //         //         }
+      //      }
 
       // Mnemosyne
       {
@@ -376,8 +377,38 @@ int main(int argc, char **argv)
             PrintResult("mnemosyne", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
          }
 
-         // Validation code
+         //         // Validation code
          //         for (LogWriterMnemosyne::Entry *entry : entries) {
+         //            auto entry2 = wal.GetNextLogEntry();
+         //            if (entry->payload_size != entry2->payload_size) {
+         //               cout << "length missmatch !!" << endl;
+         //               throw;
+         //            }
+         //            if (memcmp(entry->data, entry2->data, entry->payload_size) != 0) {
+         //               cout << "data missmatch !!" << endl;
+         //               throw;
+         //            }
+         //         }
+      }
+
+      // MnemosyneAligned
+      {
+         LogWriterMnemosyneAligned wal(nvm);
+         vector<LogWriterMnemosyneAligned::Entry *> entries = LogWriterMnemosyneAligned::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+         ub8 ns_spend = RunWithTiming([&]() {
+            for (LogWriterMnemosyneAligned::Entry *entry : entries) {
+               wal.AddLogEntry(*entry);
+            }
+         });
+         if (TABLE_VIEW) {
+            printf("%20f", ns_spend * 1.0 / entries.size());
+            fflush(stdout);
+         } else {
+            PrintResult("mnemosyneAligned", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
+         }
+
+         //         // Validation code
+         //         for (LogWriterMnemosyneAligned::Entry *entry : entries) {
          //            auto entry2 = wal.GetNextLogEntry();
          //            if (entry->payload_size != entry2->payload_size) {
          //               cout << "length missmatch !!" << endl;

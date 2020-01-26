@@ -1,4 +1,4 @@
-struct LogWriterMnemosyne {
+struct LogWriterMnemosyneAligned {
 
    struct Entry {
       ub8 payload_size;
@@ -19,7 +19,7 @@ struct LogWriterMnemosyne {
    ub8 next_free;
    ub8 log_read_offset;
 
-   LogWriterMnemosyne(NonVolatileMemory &nvm)
+   LogWriterMnemosyneAligned(NonVolatileMemory &nvm)
            : nvm(nvm)
              , file(*reinterpret_cast<File *>(nvm.Data()))
    {
@@ -31,6 +31,8 @@ struct LogWriterMnemosyne {
    {
       assert(next_free + entry.payload_size + 8<nvm.GetByteCount());
       assert(entry.payload_size>0 && entry.payload_size % 8 == 0);
+      assert((uint64_t) &file.data[next_free] % 64 == 0);
+      assert(next_free % 64 == 0);
 
       // Write length of log entry
       (uint64_t &) file.data[next_free] = entry.payload_size | 0x1;
@@ -85,6 +87,8 @@ struct LogWriterMnemosyne {
       alex_SFence();
 
       // Advance and done
+      next_free = (next_free + 63) & ~63ull;
+      assert(next_free % 64 == 0);
       return next_free;
    }
 
@@ -138,6 +142,10 @@ struct LogWriterMnemosyne {
          }
          checker = 0;
       }
+
+      // Advance
+      log_read_offset = (log_read_offset + 63) & ~63ull;
+      assert(log_read_offset % 64 == 0);
 
       Entry *entry = new(malloc(sizeof(Entry) + result.size())) Entry();
       entry->payload_size = result.size();
