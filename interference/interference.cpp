@@ -1,5 +1,6 @@
 #include "PageFlusher.hpp"
 #include "LogWriter.hpp"
+#include "SequentialReader.hpp"
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
@@ -10,6 +11,10 @@ ub8 PAGE_FLUSH_THREADS = 1;
 // Log writer config
 ub8 LOG_BYTE_COUNT = 1e9;
 ub8 LOG_WRITE_THREADS = 1;
+// -------------------------------------------------------------------------------------
+// Sequential reader config
+ub8 SEQ_READER_BYTE_COUNT = 1e9;
+ub8 SEQ_READER_THREADS = 1;
 // -------------------------------------------------------------------------------------
 // Common config
 string NVM_PATH = "";
@@ -62,6 +67,30 @@ void TestOutLogWriter()
    while (1);
 }
 // -------------------------------------------------------------------------------------
+void TestOutSeqReader()
+{
+   vector<unique_ptr<SequentialReader>> seq_readers;
+   vector<unique_ptr<thread>> threads;
+
+   for (ub4 i = 0; i<SEQ_READER_THREADS; i++) {
+      seq_readers.emplace_back(make_unique<SequentialReader>(NVM_PATH + "/seq_reader_" + to_string(i), SEQ_READER_BYTE_COUNT));
+      threads.emplace_back(make_unique<thread>([&, i]() {
+         seq_readers[i]->Run(i);
+      }));
+   }
+
+   for (ub4 i = 0; i<LOG_WRITE_THREADS; i++) {
+      while (!seq_readers[i]->ready);
+   }
+
+   for (ub4 i = 0; i<LOG_WRITE_THREADS; i++) {
+      seq_readers[i]->run = true;
+   }
+
+   cout << "main thread endless spin .." << endl;
+   while (1);
+}
+// -------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
    if (argc != 2) {
@@ -85,6 +114,6 @@ int main(int argc, char **argv)
    cerr << "STREAMING:             " << "no" << endl;
 #endif
 
-   TestOutLogWriter();
+   TestOutSeqReader();
 }
 // -------------------------------------------------------------------------------------
