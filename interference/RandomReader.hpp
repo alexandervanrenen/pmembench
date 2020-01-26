@@ -19,7 +19,6 @@ class RandomReader : public Worker {
    bool is_ram;
    ub8 *data;
    unique_ptr<NonVolatileMemory> nvm;
-   vector<ub8> operations;
    vector<double> nano_seconds;
    ub8 sum;
 
@@ -49,7 +48,6 @@ public:
          sum += DoOneRun();
          auto end = chrono::high_resolution_clock::now();
          nano_seconds.push_back(chrono::duration_cast<chrono::nanoseconds>(end - begin).count());
-         PrintResultOfLastIteration(performed_iteration_count);
          performed_iteration_count++;
       }
    }
@@ -88,11 +86,10 @@ private:
       }
       assert((ub8) data % 8 == 0);
 
-      //      Random ranny;
-      //      operations.resize((byte_count / 8));
-      //      for (uint64_t i = 0; i<(byte_count / 8); i++) {
-      //         operations[i] = ranny.Rand() % (byte_count / 8);
-      //      }
+      Random ranny;
+      for (uint64_t i = 0; i<(byte_count / 8); i++) {
+         data[i] = ranny.Rand();
+      }
    }
 
    ub8 DoOneRun()
@@ -100,7 +97,7 @@ private:
       Random ranny;
       ub8 sum = 0;
       for (ub8 i = 0; i<byte_count / 8; i++) {
-         ub8 offset = 32 * (ranny.Rand() % (byte_count / 256));
+         ub8 offset = ranny.Rand() % (byte_count / 8);
          sum += data[offset];
       }
       return sum;

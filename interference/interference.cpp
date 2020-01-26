@@ -182,10 +182,10 @@ int main(int argc, char **argv)
    CreateAllThreads();
    WaitForAllToGetReady();
    StartAll();
-   WaitForAllToPerformAtLeastInterations(10); // First one might be bad if not every one has started and last on might be bad because some body might finish earlier
+   WaitForAllToPerformAtLeastInterations(3); // First one might be bad if not every one has started and last on might be bad because some body might finish earlier
    StopAll();
    WaitForAllToDie();
-   PrintAll(2);
+   PrintAll(1); // run id, zero-based
 
    cout << "all good :)" << endl;
    return 0;
