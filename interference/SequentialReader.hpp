@@ -14,20 +14,22 @@
 using namespace std;
 // -------------------------------------------------------------------------------------
 class SequentialReader {
+   string nvm_file;
    ub8 byte_count;
+   bool is_ram;
    ub8 *data;
    ub8 expected_sum = 0;
-   string nvm_file;
-   unique_ptr<NonVolatileMemory> nvm;
+   unique_ptr <NonVolatileMemory> nvm;
 
 public:
    atomic<bool> run;
    atomic<bool> ready;
    atomic<bool> stop;
 
-   SequentialReader(const string &nvm_file, ub8 byte_count)
+   SequentialReader(const string &nvm_file, ub8 byte_count, bool is_ram)
            : byte_count(byte_count)
              , nvm_file(nvm_file)
+             , is_ram(is_ram)
              , run(false)
              , ready(false)
              , stop(false)
@@ -63,8 +65,17 @@ private:
    void Setup()
    {
       Random ranny;
-      nvm = make_unique<NonVolatileMemory>(nvm_file, byte_count);
-      data = (ub8 *) nvm->Data();
+      if (is_ram) {
+         data = (ub8 *) malloc(byte_count + 64);
+      } else {
+         nvm = make_unique<NonVolatileMemory>(nvm_file, byte_count + 64);
+         data = (ub8 *) nvm->Data();
+      }
+
+      while ((ub8) data % 8 != 0) {
+         data++;
+      }
+      assert((ub8) data % 8 == 0);
 
       for (ub8 i = 0; i<byte_count / 8; i++) {
          ub8 val = ranny.Rand();

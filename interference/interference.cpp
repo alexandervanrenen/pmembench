@@ -15,6 +15,7 @@ ub8 LOG_WRITE_THREADS = 1;
 // Sequential reader config
 ub8 SEQ_READER_BYTE_COUNT = 1e9;
 ub8 SEQ_READER_THREADS = 1;
+bool SEQ_READER_USE_RAM = true;
 // -------------------------------------------------------------------------------------
 // Common config
 string NVM_PATH = "";
@@ -73,7 +74,7 @@ void TestOutSeqReader()
    vector<unique_ptr<thread>> threads;
 
    for (ub4 i = 0; i<SEQ_READER_THREADS; i++) {
-      seq_readers.emplace_back(make_unique<SequentialReader>(NVM_PATH + "/seq_reader_" + to_string(i), SEQ_READER_BYTE_COUNT));
+      seq_readers.emplace_back(make_unique<SequentialReader>(NVM_PATH + "/seq_reader_" + to_string(i), SEQ_READER_BYTE_COUNT, SEQ_READER_USE_RAM));
       threads.emplace_back(make_unique<thread>([&, i]() {
          seq_readers[i]->Run(i);
       }));
