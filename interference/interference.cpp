@@ -1,6 +1,7 @@
 #include "PageFlusher.hpp"
 #include "LogWriter.hpp"
 #include "SequentialReader.hpp"
+#include "RandomReader.hpp"
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
@@ -16,6 +17,11 @@ ub8 LOG_WRITE_THREADS = 1;
 ub8 SEQ_READER_BYTE_COUNT = 1e9;
 ub8 SEQ_READER_THREADS = 1;
 bool SEQ_READER_USE_RAM = true;
+// -------------------------------------------------------------------------------------
+// Random reader config
+ub8 RND_READER_BYTE_COUNT = 1e9;
+ub8 RND_READER_THREADS = 1;
+bool RND_READER_USE_RAM = true;
 // -------------------------------------------------------------------------------------
 // Common config
 string NVM_PATH = "";
@@ -92,6 +98,30 @@ void TestOutSeqReader()
    while (1);
 }
 // -------------------------------------------------------------------------------------
+void TestOutRndReader()
+{
+   vector<unique_ptr<RandomReader>> rnd_readers;
+   vector<unique_ptr<thread>> threads;
+
+   for (ub4 i = 0; i<RND_READER_THREADS; i++) {
+      rnd_readers.emplace_back(make_unique<RandomReader>(NVM_PATH + "/rnd_reader_" + to_string(i), RND_READER_BYTE_COUNT, RND_READER_USE_RAM));
+      threads.emplace_back(make_unique<thread>([&, i]() {
+         rnd_readers[i]->Run(i);
+      }));
+   }
+
+   for (ub4 i = 0; i<LOG_WRITE_THREADS; i++) {
+      while (!rnd_readers[i]->ready);
+   }
+
+   for (ub4 i = 0; i<LOG_WRITE_THREADS; i++) {
+      rnd_readers[i]->run = true;
+   }
+
+   cout << "main thread endless spin .." << endl;
+   while (1);
+}
+// -------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
    if (argc != 2) {
@@ -115,6 +145,6 @@ int main(int argc, char **argv)
    cerr << "STREAMING:             " << "no" << endl;
 #endif
 
-   TestOutSeqReader();
+   TestOutRndReader();
 }
 // -------------------------------------------------------------------------------------
