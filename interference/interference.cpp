@@ -34,7 +34,7 @@ void TestOutPageFlusher()
       page_flushers[i]->run = true;
    }
 
-   cout << "main thread endless spin" << endl;
+   cout << "main thread endless spin .." << endl;
    while (1);
 }
 // -------------------------------------------------------------------------------------
@@ -58,7 +58,7 @@ void TestOutLogWriter()
       log_writers[i]->run = true;
    }
 
-   cout << "main thread endless spin" << endl;
+   cout << "main thread endless spin .." << endl;
    while (1);
 }
 // -------------------------------------------------------------------------------------
