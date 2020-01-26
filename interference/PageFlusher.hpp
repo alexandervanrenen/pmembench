@@ -449,11 +449,12 @@ ub1 *FullBufferFrame::Translate(ub4 offset, ub4 size)
    throw;
 }
 // -------------------------------------------------------------------------------------
-class PageFlusher {
+class PageFlusher : public Worker {
    Random ranny;
 
    ub8 page_count;
    string nvm_file;
+   vector<double> nano_seconds;
 
    std::unique_ptr<VolatileMemory> ram;
    std::unique_ptr<NonVolatileMemory> nvm; // One more page than in dram, because of shadow
@@ -462,20 +463,14 @@ class PageFlusher {
    NvmBufferFrame *free_nvm_bf;
 
 public:
-   atomic<bool> run;
-   atomic<bool> ready;
-   atomic<bool> stop;
-
-   PageFlusher(const string &nvm_file, ub8 page_count)
-           : page_count(page_count)
+   PageFlusher(const string &nvm_file, ub8 page_count, ub4 tid, string config)
+           : Worker(tid, config)
+             , page_count(page_count)
              , nvm_file(nvm_file)
-             , run(false)
-             , ready(false)
-             , stop(false)
    {
    }
 
-   void Run(ub4 thread_id)
+   void Run()
    {
       Setup();
       ready = true;
@@ -487,11 +482,23 @@ public:
          auto begin = chrono::high_resolution_clock::now();
          FlushAll();
          auto end = chrono::high_resolution_clock::now();
-         double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
-
-         unique_lock<mutex> l(global_io_mutex);
-         cout << "RES page_flusher tid= " << thread_id << " perf(pages/s): " << (page_count / (ns / 1e9)) << endl;
+         nano_seconds.push_back(chrono::duration_cast<chrono::nanoseconds>(end - begin).count());
+         performed_iteration_count++;
       }
+   }
+
+   void PrintResultOfLastIteration(ub4 iteration)
+   {
+      if (!stop || iteration>=performed_iteration_count) {
+         throw;
+      }
+      double ns = nano_seconds[iteration];
+      //@formatter:off
+      cout << "RES page_flusher " << config
+           << " tid= " << tid
+           << " iterations: " << iteration << "/" << performed_iteration_count
+           << " perf(pages/s): " << ub8(page_count / (ns / 1e9)) << endl;
+      //@formatter:on
    }
 
    PageFlusher(const PageFlusher &) = delete;

@@ -13,34 +13,30 @@
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
-class RandomReader {
+class RandomReader : public Worker {
    string nvm_file;
    ub8 byte_count;
    bool is_ram;
    ub8 *data;
    unique_ptr<NonVolatileMemory> nvm;
    vector<ub8> operations;
+   vector<double> nano_seconds;
+   ub8 sum;
 
 public:
-   atomic<bool> run;
-   atomic<bool> ready;
-   atomic<bool> stop;
-
-   RandomReader(const string &nvm_file, ub8 byte_count, bool is_ram)
-           : byte_count(byte_count)
+   RandomReader(const string &nvm_file, ub8 byte_count, bool is_ram, ub4 tid, string config)
+           : Worker(tid, config)
+             , byte_count(byte_count)
              , nvm_file(nvm_file)
              , is_ram(is_ram)
-             , run(false)
-             , ready(false)
-             , stop(false)
    {
-      assert(byte_count % 8);
+      assert(byte_count % 8 == 0);
       if (byte_count % 8 != 0) {
          throw "byte_count % 8";
       }
    }
 
-   void Run(ub4 thread_id)
+   void Run()
    {
       Setup();
       ready = true;
@@ -50,13 +46,27 @@ public:
 
       while (!stop) {
          auto begin = chrono::high_resolution_clock::now();
-         ub8 sum = DoOneRun();
+         sum += DoOneRun();
          auto end = chrono::high_resolution_clock::now();
-         double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
-
-         unique_lock<mutex> l(global_io_mutex);
-         cout << "RES rnd_reader tid= " << thread_id << " sum= " << sum << " perf(reads/s): " << ((byte_count / 8) / (ns / 1e9)) << endl;
+         nano_seconds.push_back(chrono::duration_cast<chrono::nanoseconds>(end - begin).count());
+         PrintResultOfLastIteration(performed_iteration_count);
+         performed_iteration_count++;
       }
+   }
+
+   void PrintResultOfLastIteration(ub4 iteration)
+   {
+      //      if (!stop || iteration>=performed_iteration_count) {
+      //         throw;
+      //      }
+      double ns = nano_seconds[iteration];
+      //@formatter:off
+      cout << "RES " << (is_ram ? "rnd_ram_reader " : "rnd_nvm_reader ")  << config
+           << " tid: " << tid
+           << " iterations: " << iteration << "/" << performed_iteration_count
+           << " sum: " << sum
+           << " perf(reads/s): " << ub8((byte_count / 8) / (ns / 1e9)) << endl;
+      //@formatter:on
    }
 
    RandomReader(const RandomReader &) = delete;
@@ -78,11 +88,11 @@ private:
       }
       assert((ub8) data % 8 == 0);
 
-      Random ranny;
-      operations.resize((byte_count / 8));
-      for (uint64_t i = 0; i<(byte_count / 8); i++) {
-         operations[i] = ranny.Rand() % (byte_count / 8);
-      }
+      //      Random ranny;
+      //      operations.resize((byte_count / 8));
+      //      for (uint64_t i = 0; i<(byte_count / 8); i++) {
+      //         operations[i] = ranny.Rand() % (byte_count / 8);
+      //      }
    }
 
    ub8 DoOneRun()
@@ -90,7 +100,8 @@ private:
       Random ranny;
       ub8 sum = 0;
       for (ub8 i = 0; i<byte_count / 8; i++) {
-         sum += data[operations[i]];
+         ub8 offset = 32 * (ranny.Rand() % (byte_count / 256));
+         sum += data[offset];
       }
       return sum;
    }

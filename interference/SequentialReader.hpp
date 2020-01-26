@@ -13,26 +13,21 @@
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
-class SequentialReader {
+class SequentialReader : public Worker {
    string nvm_file;
    ub8 byte_count;
    bool is_ram;
    ub8 *data;
    ub8 expected_sum = 0;
    unique_ptr<NonVolatileMemory> nvm;
+   vector<double> nano_seconds;
 
 public:
-   atomic<bool> run;
-   atomic<bool> ready;
-   atomic<bool> stop;
-
-   SequentialReader(const string &nvm_file, ub8 byte_count, bool is_ram)
-           : byte_count(byte_count)
+   SequentialReader(const string &nvm_file, ub8 byte_count, bool is_ram, ub4 tid, string config)
+           : Worker(tid, config)
+             , byte_count(byte_count)
              , nvm_file(nvm_file)
              , is_ram(is_ram)
-             , run(false)
-             , ready(false)
-             , stop(false)
    {
       assert(byte_count % 8);
       if (byte_count % 8 != 0) {
@@ -40,7 +35,7 @@ public:
       }
    }
 
-   void Run(ub4 thread_id)
+   void Run()
    {
       Setup();
       ready = true;
@@ -52,11 +47,23 @@ public:
          auto begin = chrono::high_resolution_clock::now();
          DoOneRun();
          auto end = chrono::high_resolution_clock::now();
-         double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
-
-         unique_lock<mutex> l(global_io_mutex);
-         cout << "RES seq_reader tid= " << thread_id << " perf(gb/s): " << (byte_count / ns) << endl;
+         nano_seconds.push_back(chrono::duration_cast<chrono::nanoseconds>(end - begin).count());
+         performed_iteration_count++;
       }
+   }
+
+   void PrintResultOfLastIteration(ub4 iteration)
+   {
+      if (!stop || iteration>=performed_iteration_count) {
+         throw;
+      }
+      double ns = nano_seconds[iteration];
+      //@formatter:off
+      cout << "RES " << (is_ram ? "seq_ram_reader " : "seq_nvm_reader ") << config
+           << " tid: " << tid
+           << " iterations: " << iteration << "/" << performed_iteration_count
+           << " perf(gb/s): " << (byte_count / ns) << endl;
+      //@formatter:on
    }
 
    SequentialReader(const SequentialReader &) = delete;

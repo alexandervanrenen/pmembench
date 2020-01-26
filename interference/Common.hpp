@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 #include <mutex>
+#include <atomic>
 #include "libpmem.h"
 // -------------------------------------------------------------------------------------
 using ub1 = uint8_t;
@@ -94,4 +95,19 @@ inline void alex_SFence()
 {
    _mm_sfence();
 }
+// -------------------------------------------------------------------------------------
+struct Worker {
+   Worker(ub4 tid, std::string config)
+           : tid(tid)
+             , config(config) {}
+
+   ub4 tid;
+   std::string config;
+   std::atomic<bool> run = false;
+   std::atomic<bool> ready = false;
+   std::atomic<bool> stop = false;
+   std::atomic<ub4> performed_iteration_count = 0;
+
+   virtual void PrintResultOfLastIteration(ub4 iteration) = 0;
+};
 // -------------------------------------------------------------------------------------

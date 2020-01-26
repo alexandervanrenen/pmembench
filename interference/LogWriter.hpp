@@ -149,7 +149,7 @@ struct LogWriterZeroBlocked {
    }
 };
 // -------------------------------------------------------------------------------------
-class LogWriter {
+class LogWriter : public Worker {
    unique_ptr <LogWriterZeroBlocked> wal;
    unique_ptr <NonVolatileMemory> nvm;
    vector <ub1> memory;
@@ -160,21 +160,17 @@ class LogWriter {
 
    const ub4 ENTRY_SIZE = 104;
 
-public:
-   atomic<bool> run;
-   atomic<bool> ready;
-   atomic<bool> stop;
+   vector<double> nano_seconds;
 
-   LogWriter(const string &nvm_file, ub8 byte_count)
-           : byte_count(byte_count)
+public:
+   LogWriter(const string &nvm_file, ub8 byte_count, ub4 tid, string config)
+           : Worker(tid, config)
+             , byte_count(byte_count)
              , nvm_file(nvm_file)
-             , run(false)
-             , ready(false)
-             , stop(false)
    {
    }
 
-   void Run(ub4 thread_id)
+   void Run()
    {
       Setup();
       ready = true;
@@ -186,11 +182,23 @@ public:
          auto begin = chrono::high_resolution_clock::now();
          DoOneRun();
          auto end = chrono::high_resolution_clock::now();
-         double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
-
-         unique_lock <mutex> l(global_io_mutex);
-         cout << "RES log_writer tid= " << thread_id << " perf(logs/s): " << (entries.size() / (ns / 1e9)) << endl;
+         nano_seconds.push_back(chrono::duration_cast<chrono::nanoseconds>(end - begin).count());
+         performed_iteration_count++;
       }
+   }
+
+   void PrintResultOfLastIteration(ub4 iteration)
+   {
+      if (!stop || iteration>=performed_iteration_count) {
+         throw;
+      }
+      double ns = nano_seconds[iteration];
+      //@formatter:off
+      cout << "RES log_writer " << config
+           << " tid: " << tid
+           << " iterations: " << iteration << "/" << performed_iteration_count
+           << " perf(logs/s): " << ub8(entries.size() / (ns / 1e9)) << endl;
+      //@formatter:on
    }
 
    LogWriter(const LogWriter &) = delete;
