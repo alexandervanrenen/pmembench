@@ -188,8 +188,8 @@ public:
          auto end = chrono::high_resolution_clock::now();
          double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
 
-         double latency = ns * 1.0 / entries.size();
-         cout << thread_id << " -> " << latency << endl;
+         unique_lock <mutex> l(global_io_mutex);
+         cout << "RES log_writer tid= " << thread_id << " perf(logs/s): " << (entries.size() / (ns / 1e9)) << endl;
       }
    }
 

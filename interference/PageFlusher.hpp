@@ -489,7 +489,8 @@ public:
          auto end = chrono::high_resolution_clock::now();
          double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
 
-         cout << thread_id << " -> " << (page_count / (ns / 1e9)) << endl;
+         unique_lock<mutex> l(global_io_mutex);
+         cout << "RES page_flusher tid= " << thread_id << " perf(pages/s): " << (page_count / (ns / 1e9)) << endl;
       }
    }
 

@@ -50,11 +50,12 @@ public:
 
       while (!stop) {
          auto begin = chrono::high_resolution_clock::now();
-         ub8 res = DoOneRun();
+         ub8 sum = DoOneRun();
          auto end = chrono::high_resolution_clock::now();
          double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
 
-         cout << thread_id << " -> " << " (res=" << res << ") time: " << (byte_count / ns) << endl;
+         unique_lock<mutex> l(global_io_mutex);
+         cout << "RES rnd_reader tid= " << thread_id << " sum= " << sum << " perf(reads/s): " << ((byte_count / 8) / (ns / 1e9)) << endl;
       }
    }
 

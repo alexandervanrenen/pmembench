@@ -19,7 +19,7 @@ class SequentialReader {
    bool is_ram;
    ub8 *data;
    ub8 expected_sum = 0;
-   unique_ptr <NonVolatileMemory> nvm;
+   unique_ptr<NonVolatileMemory> nvm;
 
 public:
    atomic<bool> run;
@@ -54,7 +54,8 @@ public:
          auto end = chrono::high_resolution_clock::now();
          double ns = chrono::duration_cast<chrono::nanoseconds>(end - begin).count();
 
-         cout << thread_id << " -> " << (byte_count / ns) << endl;
+         unique_lock<mutex> l(global_io_mutex);
+         cout << "RES seq_reader tid= " << thread_id << " perf(gb/s): " << (byte_count / ns) << endl;
       }
    }
 

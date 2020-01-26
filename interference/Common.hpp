@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <mutex>
 #include "libpmem.h"
 // -------------------------------------------------------------------------------------
 using ub1 = uint8_t;
@@ -24,6 +25,8 @@ const static ub4 kCacheLinesPerPage = kPageByteCount / kCacheLineByteCount; // 1
 const static ub4 kPageAlignment = 512; // For O_Direct
 const static ub8 kInvalidPageId = ~0;
 }
+// -------------------------------------------------------------------------------------
+static std::mutex global_io_mutex;
 // -------------------------------------------------------------------------------------
 #define a_mm_clflush(addr)\
     asm volatile("clflush %0" : "+m" (*(volatile char *)addr));
