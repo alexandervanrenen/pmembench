@@ -230,21 +230,21 @@ int main(int argc, char **argv)
       }
 
       // Header dancing
-      //      {
-      //         LogWriterHeaderDancing wal(nvm);
-      //         vector<LogWriterHeaderDancing::Entry *> entries = LogWriterHeaderDancing::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
-      //         ub8 ns_spend = RunWithTiming([&]() {
-      //            for (LogWriterHeaderDancing::Entry *entry : entries) {
-      //               wal.AddLogEntry(*entry);
-      //            }
-      //         });
-      //         if (TABLE_VIEW) {
-      //            printf("%20f", ns_spend * 1.0 / entries.size());
-      //            fflush(stdout);
-      //         } else {
-      //            PrintResult("headerDanc", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
-      //         }
-      //      }
+      {
+         LogWriterHeaderDancing wal(nvm);
+         vector<LogWriterHeaderDancing::Entry *> entries = LogWriterHeaderDancing::CreateRandomEntries(memory, entry_size / 8, entry_size / 8, LOG_PAYLOAD_SIZE, ranny);
+         ub8 ns_spend = RunWithTiming([&]() {
+            for (LogWriterHeaderDancing::Entry *entry : entries) {
+               wal.AddLogEntry(*entry);
+            }
+         });
+         if (TABLE_VIEW) {
+            printf("%20f", ns_spend * 1.0 / entries.size());
+            fflush(stdout);
+         } else {
+            PrintResult("headerDanc", entry_size, ns_spend * 1.0 / entries.size(), wal.GetWrittenByteCount());
+         }
+      }
 
       // Header aligned dancing
       //      {
