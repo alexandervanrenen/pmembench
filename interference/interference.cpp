@@ -5,7 +5,7 @@
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
-ub8 PAGE_FLUSH_PAGE_COUNT = 625000;
+ub8 PAGE_FLUSH_PAGE_COUNT = 62500;
 ub8 LOG_BYTE_COUNT = 1e9;
 ub8 SEQ_READER_BYTE_COUNT = 10e9;
 ub8 RND_READER_BYTE_COUNT = 1e9;
@@ -172,11 +172,11 @@ int main(int argc, char **argv)
    cout << "PAGE_NVM_THREADS:      " << PAGE_NVM_THREADS << endl;
    cout << "CONFIG_STRING:         " << CONFIG_STRING << endl;
 
-   cerr << "NVM_PATH:              " << NVM_PATH << endl;
+   cout << "NVM_PATH:              " << NVM_PATH << endl;
 #ifdef STREAMING
-   cerr << "STREAMING:             " << "yes" << endl;
+   cout << "STREAMING:             " << "yes" << endl;
 #else
-   cerr << "STREAMING:             " << "no" << endl;
+   cout << "STREAMING:             " << "no" << endl;
 #endif
 
    CreateAllThreads();
