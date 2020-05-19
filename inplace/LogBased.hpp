@@ -164,20 +164,20 @@ struct LogBasedUpdates {
       }
    }
 
-   void DoUpdate(const Operation<entry_size> &op)
+   void DoUpdate(const Operation<entry_size> &op, uint32_t id)
    {
-      assert(op.entry_id<entry_count);
+      assert(id<entry_count);
 
       log_writer.AddLogEntry(op);
 
-      ub1 *entry_begin = nvm_data.Data() + (op.entry_id * sizeof(Operation<entry_size>));
+      ub1 *entry_begin = nvm_data.Data() + (id * sizeof(Operation<entry_size>));
       alex_FastCopyAndWriteBack(entry_begin, (ub1 *) &op, entry_size);
       alex_SFence();
    }
 
-   uint64_t ReadSingleResult(Operation<entry_size> &result)
+   uint64_t ReadSingleResult(Operation<entry_size> &result, uint32_t id)
    {
-      result = data_on_nvm[result.entry_id];
+      result = data_on_nvm[id];
       return result.entry_id;
    }
 };

@@ -241,20 +241,20 @@ struct InPlaceLikeUpdates {
       }
    }
 
-   void DoUpdate(const Operation<entry_size> &op)
+   void DoUpdate(const Operation<entry_size> &op, uint32_t id)
    {
-      entries[op.entry_id].WriteNoCheck((const char *) &op);
+      entries[id].WriteNoCheck((const char *) &op);
       for (uint32_t i = 0; i<sizeof(InplaceField<entry_size>); i += 64) {
-         char *addr = (char *) (entries + op.entry_id) + i;
+         char *addr = (char *) (entries + id) + i;
          assert((uint64_t) addr % 64 == 0);
          alex_WriteBack(addr);
       }
       alex_SFence();
    }
 
-   uint64_t ReadSingleResult(Operation<entry_size> &result)
+   uint64_t ReadSingleResult(Operation<entry_size> &result, uint32_t id)
    {
-      entries[result.entry_id].ReadNoCheck((char *) &result);
+      entries[id].ReadNoCheck((char *) &result);
       return result.entry_id;
    }
 };

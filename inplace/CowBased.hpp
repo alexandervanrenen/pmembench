@@ -166,15 +166,15 @@ struct CowBasedUpdates {
       pmem_persist(nvm_data.Data(), nvm_data.GetByteCount());
    }
 
-   void DoUpdate(const Operation<entry_size> &op)
+   void DoUpdate(const Operation<entry_size> &op, uint32_t id)
    {
-      assert(op.entry_id<entry_count);
-      entries[op.entry_id].Write((const char *) &op);
+      assert(id<entry_count);
+      entries[id].Write((const char *) &op);
    }
 
-   uint64_t ReadSingleResult(Operation<entry_size> &result)
+   uint64_t ReadSingleResult(Operation<entry_size> &result, uint32_t id)
    {
-      entries[result.entry_id].Read((char *) &result);
+      entries[id].Read((char *) &result);
       return result.entry_id;
    }
 };
