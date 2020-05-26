@@ -62,6 +62,11 @@ inline void alex_SFence()
    _mm_sfence();
 }
 // -------------------------------------------------------------------------------------
+inline void alex_MFence()
+{
+   _mm_mfence();
+}
+// -------------------------------------------------------------------------------------
 inline ub8 alex_PopCount(ub8 value)
 {
    return _mm_popcnt_u64(value);

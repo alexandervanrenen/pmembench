@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <chrono>
+#include <algorithm>
+#include <fstream>
 // -------------------------------------------------------------------------------------
 using namespace std;
 // -------------------------------------------------------------------------------------
@@ -21,6 +23,8 @@ string NVM_PATH;
 vector<Operation<ENTRY_SIZE>> log_result;
 constexpr bool VALIDATE = false;
 bool SEQUENTIAL;
+const uint64_t INDIVIDUAL_OPERATION_COUNT = 10000;
+const uint64_t ITERATION_COUNT = 10;
 // -------------------------------------------------------------------------------------
 vector<Operation<ENTRY_SIZE>> PrepareSequentialOperations()
 {
@@ -59,6 +63,20 @@ vector<Operation<ENTRY_SIZE>> PrepareRandomOperations()
    return results;
 }
 // -------------------------------------------------------------------------------------
+tuple<double, double, double> GetConfidenceIntervall(vector<uint64_t> &individual_times, string hint)
+{
+   sort(individual_times.begin(), individual_times.end());
+
+   double lower_time = individual_times[INDIVIDUAL_OPERATION_COUNT * 0.025];
+   double med_time = individual_times[INDIVIDUAL_OPERATION_COUNT * 0.50];
+   double upper_time = individual_times[INDIVIDUAL_OPERATION_COUNT * 0.975];
+   double lower_per_second = 1e9 / upper_time; // swapped!!
+   double med_per_second = 1e9 / med_time;
+   double upper_per_second = 1e9 / lower_time;
+
+   return make_tuple(med_per_second, med_per_second - lower_per_second, upper_per_second - med_per_second);
+}
+// -------------------------------------------------------------------------------------
 template<class COMPETITOR>
 void RunExperiment(const vector<Operation<ENTRY_SIZE>> &operations, const std::string &competitor_name)
 {
@@ -73,34 +91,65 @@ void RunExperiment(const vector<Operation<ENTRY_SIZE>> &operations, const std::s
 
    uint64_t check_sum_to_prevent_optimizations = 0;
 
-   uint64_t updates_per_second = 0;
-   uint64_t reads_per_second = 0;
-   uint64_t dep_reads_per_second = 0;
-
-   // Updates
-   {
+   // Updates throughput -> execute many updates and take the avg time
+   vector<double> updates_per_second;
+   for (uint32_t iteration = 0; iteration<ITERATION_COUNT; iteration++) {
       auto begin_ts = chrono::high_resolution_clock::now();
       for (uint64_t u = 0; u<operations.size(); u++) {
          competitor.DoUpdate(operations[u], operations[u].entry_id);
       }
       auto end_ts = chrono::high_resolution_clock::now();
       uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
-      updates_per_second = (operations.size() * 1e9) / ns;
+      updates_per_second.push_back((operations.size() * 1e9) / ns);
    }
 
-   // Reads
-   {
+   //   // Individual updates -> get the time for individual updates
+   //   double lower_updates_per_second_factor = 0;
+   //   double upper_updates_per_second_factor = 0;
+   //   double med_updates_per_second = 0;
+   //   {
+   //      vector<uint64_t> times(INDIVIDUAL_OPERATION_COUNT);
+   //      for (uint64_t i = 0; i<INDIVIDUAL_OPERATION_COUNT; i++) {
+   //         auto begin_ts = chrono::high_resolution_clock::now();
+   //         competitor.DoUpdate(operations[i], operations[i].entry_id);
+   //         auto end_ts = chrono::high_resolution_clock::now();
+   //         times[i] = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+   //         alex_MFence();
+   //      }
+   //      tie(med_updates_per_second, lower_updates_per_second_factor, upper_updates_per_second_factor) = GetConfidenceIntervall(times, "update");
+   //   }
+
+   // Read throughput -> execute many reads and take the avg time
+   vector<double> reads_per_second;
+   for (uint32_t iteration = 0; iteration<ITERATION_COUNT; iteration++) {
       auto begin_ts = chrono::high_resolution_clock::now();
       for (uint64_t u = 0; u<operations.size(); u++) {
          check_sum_to_prevent_optimizations += competitor.ReadSingleResult(buffer, ids_only[u]);
       }
       auto end_ts = chrono::high_resolution_clock::now();
       uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
-      reads_per_second = (operations.size() * 1e9) / ns;
+      reads_per_second.push_back((operations.size() * 1e9) / ns);
    }
 
-   // Dependent reads
-   {
+   //   // Individual reads -> get the time for individual reads
+   //   double lower_reads_per_second_factor = 0;
+   //   double upper_reads_per_second_factor = 0;
+   //   double med_reads_per_second = 0;
+   //   {
+   //      vector<uint64_t> times(INDIVIDUAL_OPERATION_COUNT);
+   //      for (uint64_t i = 0; i<INDIVIDUAL_OPERATION_COUNT; i++) {
+   //         auto begin_ts = chrono::high_resolution_clock::now();
+   //         check_sum_to_prevent_optimizations += competitor.ReadSingleResult(buffer, ids_only[i]);
+   //         auto end_ts = chrono::high_resolution_clock::now();
+   //         times[i] = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+   //         alex_MFence();
+   //      }
+   //      tie(med_reads_per_second, lower_reads_per_second_factor, upper_reads_per_second_factor) = GetConfidenceIntervall(times, "reads");
+   //   }
+
+   // Dependent read throughput -> execute many dependent reads and take the avg time
+   vector<double> dep_reads_per_second;
+   for (uint32_t iteration = 0; iteration<ITERATION_COUNT; iteration++) {
       for (uint64_t u = 0; u<operations.size(); u++) {
          competitor.DoUpdate(operations[u], u);
       }
@@ -113,8 +162,70 @@ void RunExperiment(const vector<Operation<ENTRY_SIZE>> &operations, const std::s
       check_sum_to_prevent_optimizations += next_id;
       auto end_ts = chrono::high_resolution_clock::now();
       uint64_t ns = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
-      dep_reads_per_second = (operations.size() * 1e9) / ns;
+      dep_reads_per_second.push_back((operations.size() * 1e9) / ns);
    }
+
+   //   // Individual dependent reads -> get the time for individual dependent reads
+   //   double lower_dep_reads_per_second_factor = 0;
+   //   double upper_dep_reads_per_second_factor = 0;
+   //   double med_dep_reads_per_second = 0;
+   //   {
+   //      for (uint64_t u = 0; u<operations.size(); u++) {
+   //         competitor.DoUpdate(operations[u], u);
+   //      }
+   //
+   //      vector<uint64_t> times(INDIVIDUAL_OPERATION_COUNT);
+   //      uint64_t next_id = 0;
+   //      for (uint64_t i = 0; i<INDIVIDUAL_OPERATION_COUNT; i++) {
+   //         auto begin_ts = chrono::high_resolution_clock::now();
+   //         next_id = competitor.ReadSingleResult(buffer, next_id);
+   //         auto end_ts = chrono::high_resolution_clock::now();
+   //         times[i] = chrono::duration_cast<chrono::nanoseconds>(end_ts - begin_ts).count();
+   //         alex_MFence();
+   //      }
+   //      check_sum_to_prevent_optimizations += next_id;
+   //      tie(med_dep_reads_per_second, lower_dep_reads_per_second_factor, upper_dep_reads_per_second_factor) = GetConfidenceIntervall(times, "dep");
+   //   }
+
+   //   //@formatter:off
+//   cout << "res:"
+//        << " technique: " << competitor_name
+//        << " checksum: " << check_sum_to_prevent_optimizations
+//        << " order: " << (SEQUENTIAL ? "seq" : "rand")
+//        << " entry_size: " << ENTRY_SIZE
+//        << " updates(M): " << med_updates_per_second / 1000 / 1000.0
+//        << " " << (lower_updates_per_second_factor)  / 1000 / 1000.0
+//        << " " << (upper_updates_per_second_factor) / 1000 / 1000.0
+//        << " reads(M): " << med_reads_per_second / 1000 / 1000.0
+//        << " " << (lower_reads_per_second_factor) / 1000 / 1000.0
+//        << " " << (upper_reads_per_second_factor) / 1000 / 1000.0
+//        << " dep_reads(M): " << med_dep_reads_per_second / 1000 / 1000.0
+//        << " " << (lower_dep_reads_per_second_factor)  / 1000 / 1000.0
+//        << " " << (upper_dep_reads_per_second_factor) / 1000 / 1000.0
+//        << endl;
+//   //@formatter:on
+
+   //   //@formatter:off
+//   cout << "res:"
+//        << " technique: " << competitor_name
+//        << " checksum: " << check_sum_to_prevent_optimizations
+//        << " order: " << (SEQUENTIAL ? "seq" : "rand")
+//        << " entry_size: " << ENTRY_SIZE
+//        << " updates(M): " << updates_per_second / 1000 / 1000.0
+//        << " " << (updates_per_second - updates_per_second * lower_updates_per_second_factor)  / 1000 / 1000.0
+//        << " " << (updates_per_second * upper_updates_per_second_factor - updates_per_second) / 1000 / 1000.0
+//        << " reads(M): " << reads_per_second / 1000 / 1000.0
+//        << " " << (reads_per_second - reads_per_second * lower_reads_per_second_factor) / 1000 / 1000.0
+//        << " " << (reads_per_second * upper_reads_per_second_factor - reads_per_second) / 1000 / 1000.0
+//        << " dep_reads(M): " << dep_reads_per_second / 1000 / 1000.0
+//        << " " << (dep_reads_per_second - dep_reads_per_second * lower_dep_reads_per_second_factor)  / 1000 / 1000.0
+//        << " " << (dep_reads_per_second * upper_dep_reads_per_second_factor - dep_reads_per_second) / 1000 / 1000.0
+//        << endl;
+//   //@formatter:on
+
+   sort(updates_per_second.begin(), updates_per_second.end());
+   sort(reads_per_second.begin(), reads_per_second.end());
+   sort(dep_reads_per_second.begin(), dep_reads_per_second.end());
 
    //@formatter:off
    cout << "res:"
@@ -122,9 +233,15 @@ void RunExperiment(const vector<Operation<ENTRY_SIZE>> &operations, const std::s
         << " checksum: " << check_sum_to_prevent_optimizations
         << " order: " << (SEQUENTIAL ? "seq" : "rand")
         << " entry_size: " << ENTRY_SIZE
-        << " updates(M): " << updates_per_second / 1000 / 1000.0
-        << " reads(M): " << reads_per_second / 1000 / 1000.0
-        << " dep_reads(M): " << dep_reads_per_second / 1000 / 1000.0
+        << " updates(M): " << (updates_per_second[4] + updates_per_second[5]) / 2e6
+        << " " << updates_per_second[0]  / 1e6
+        << " " << updates_per_second[9] / 1e6
+        << " reads(M): " << (reads_per_second[4] + reads_per_second[5]) / 2e6
+        << " " << reads_per_second[0] / 1e6
+        << " " << reads_per_second[9] / 1e6
+        << " dep_reads(M): " << (dep_reads_per_second[4] + dep_reads_per_second[5]) / 2e6
+        << " " << dep_reads_per_second[0]  / 1e6
+        << " " << dep_reads_per_second[9] / 1e6
         << endl;
    //@formatter:on
 
@@ -164,6 +281,10 @@ int main(int argc, char **argv)
    SEQUENTIAL = argv[2][0] == 's';
    NVM_PATH = argv[3]; // Path to the nvm folder
    ENTRY_COUNT = DATA_SIZE / ENTRY_SIZE;
+   if (ENTRY_COUNT<INDIVIDUAL_OPERATION_COUNT) {
+      cout << "Need higher ENTRY_COUNT than INDIVIDUAL_OPERATION_COUNT" << endl;
+      throw;
+   }
 
    cout << "Config" << endl;
    cout << "------" << endl;
